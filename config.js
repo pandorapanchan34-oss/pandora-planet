@@ -1,5 +1,5 @@
 // config.js
-import { UNIVERSAL } from './js/constants.j';
+import { UNIVERSAL } from './js/constants.js';
 
 export const PLANET = {
     name: "Aetheria",           // ← ここを変えると独自惑星になる
