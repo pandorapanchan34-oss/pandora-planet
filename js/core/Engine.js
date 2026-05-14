@@ -36,6 +36,24 @@ export class PandoraEngine {
         if (this.state.phi > 1.15 && this.state.phase === "Complex") {
             this.state.phase = "Sapient";
             window.addLog("PHASE SHIFT → Sapient");
+
+    
+
+    // 1. 生命情報密度 Φ の更新（geo + bio + neural + tech + wo - entropy）
+    // 死の回転（Lifespan）が Φ を押し上げるパンドラ特有のロジック
+    const wo = this.calculateDeathWriteout(); 
+    this.state.phi += (0.00012 + (this.state.drive * 0.0015) + wo) * (delta / 16);
+
+    // 2. Strain の動的計算
+    // Φc (5/6) への接近による飽和（Sat）と文明負荷（Civ）の加算
+    const ratio = this.state.phi / (5/6);
+    const saturation = (1 / Math.max(0.002, Math.abs(5/6 - this.state.phi))) * 0.025;
+    this.state.strain = 1.5 + (ratio * 2.0) + saturation + (this.state.drive * 4.0);
+
+    // 3. 絶滅イベント（Strain起因のランダム発火）
+    this.checkExtinctionEvents();
+}
+
         }
     }
 
