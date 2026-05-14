@@ -2,9 +2,10 @@
 // PANDORA EARTH — js/core/Engine.js  (v2 layered)
 // オーケストレーター
 //
-// どの Config（マップ）を読み込み、
-// どの Plugin（生命）を走らせるか選ぶ。
-// 各レイヤーの依存関係を解決しながら計算を進める。
+// ✅ FIX①: 内部の_loop()/requestAnimationFrameを削除。
+//    ループはmain.jsが一元管理する。
+//    Engine.update(delta)はmain.jsから呼ばれる外部駆動方式に変更。
+//    start()/stop()はactiveフラグの管理のみ行う。
 // ============================================================
 
 import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
@@ -37,23 +38,17 @@ export class PandoraEngine {
     this.eventLog  = [];
     this._maxLog   = 100;
 
-    // ── ループ制御 ────────────────────────────────────────
-    this._rafId    = null;
-    this._lastTime = null;
-    this._yearScale = planetConfig.yearScale ?? 1_000; // delta あたりの年数
+    this._yearScale = planetConfig.yearScale ?? 1_000; // delta(秒)あたりの年数
   }
 
   // ── 起動 / 停止 / リセット ────────────────────────────
+  // ✅ FIX①: start()はactiveフラグを立てるだけ。ループはmain.jsが管理。
   start() {
-    if (this.active) return;
-    this.active    = true;
-    this._lastTime = performance.now();
-    this._loop();
+    this.active = true;
   }
 
   stop() {
     this.active = false;
-    if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
   }
 
   reset(planetConfig = {}) {
@@ -61,18 +56,8 @@ export class PandoraEngine {
     Object.assign(this, new PandoraEngine(planetConfig));
   }
 
-  // ── requestAnimationFrame ループ ─────────────────────
-  _loop() {
-    if (!this.active) return;
-    this._rafId = requestAnimationFrame(ts => {
-      const delta = Math.min((ts - this._lastTime) / 1000, 0.1);
-      this._lastTime = ts;
-      this.update(delta);
-      this._loop();
-    });
-  }
-
   // ── メインアップデートルーチン ────────────────────────
+  // deltaは秒単位（main.jsで変換済み）
   /**
    * 更新順序（依存関係を解決）:
    *   1. species.update  → writeout（死による情報還流）
@@ -82,6 +67,7 @@ export class PandoraEngine {
    *   5. _updatePhase    → フェーズ遷移判定
    */
   update(delta) {
+    // ✅ FIX①: activeチェックはmain.js側で行うが、二重保護として残す
     if (!this.active) return;
 
     // A. 時間進行
@@ -93,15 +79,13 @@ export class PandoraEngine {
     const climateSnap = this.climate.getSnapshot();
 
     // C. 生命活動 → 情報還流（Death Writeout）
-    //    生命の「死」が惑星の Φ を押し上げる ← Pandora核心
     const writeout = this.species.update(climateSnap, bodySnap, delta);
     this.body.setPhi(this.body.phi + writeout);
 
-    // D. 地質層の更新（マントル・エントロピー流）
+    // D. 地質層の更新
     this.body.update(delta);
 
-    // E. 環境層の更新（地表温度・天候）
-    //    地質の Strain + 生命の Drive を気候に反映
+    // E. 環境層の更新
     this.climate.update(
       this.body.getSnapshot(),
       this.species.getSnapshot(),
