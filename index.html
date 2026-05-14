@@ -1,33 +1,99 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PANDORA PLANET NODE</title>
-    <link rel="stylesheet" href="./assets/css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PANDORA EARTH — Strain World Monitor</title>
+<link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="ui-panel">
-            <header>
-                <h1>PANDORA <span>PLANET NODE</span></h1>
-                <div class="subtitle">bgf ≈ 19.15 | Aetheria</div>
-            </header>
 
-            <div class="stats">
-                <div class="stat"><span class="label">PHASE</span><span id="phase" class="value">Complex</span></div>
-                <div class="stat"><span class="label">Φ DENSITY</span><span id="phi" class="value">0.906</span></div>
-                <div class="stat"><span class="label">bgf TEMP</span><span id="temp" class="value">19.2°C</span></div>
-                <div class="stat"><span class="label">STRAIN</span><span id="strain" class="value">9.12</span></div>
-                <div class="stat"><span class="label">DRIVE</span><span id="drive" class="value">0.034</span></div>
-            </div>
+<div id="app">
 
-            <button id="runBtn" class="observe-btn">OBSERVE SINGULARITY</button>
-            <div class="log" id="log"></div>
-        </div>
-        <canvas id="sphere-canvas"></canvas>
+  <!-- HEADER -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo">PANDORA <em>EARTH</em></div>
+      <div class="tagline">STRAIN WORLD MONITOR // MERCATOR MODE</div>
+    </div>
+    <div class="header-right">
+      <div class="hstat">
+        <div class="hstat-label">ENGINE</div>
+        <div class="hstat-val green" id="hEngineStatus">V10 ONLINE</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-label">GLOBAL STRAIN</div>
+        <div class="hstat-val" id="hGlobalStrain">—</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-label">PHI</div>
+        <div class="hstat-val amber" id="hPhi">—</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-label">PHASE</div>
+        <div class="hstat-val" id="hPhase">—</div>
+      </div>
+      <div class="clock" id="clock">—</div>
+    </div>
+  </header>
+
+  <!-- MAP AREA -->
+  <div id="mapWrap">
+    <canvas id="mapCanvas"></canvas>
+    <!-- TOOLTIP -->
+    <div id="tooltip" class="tooltip hidden">
+      <div class="tt-region" id="ttRegion">—</div>
+      <div class="tt-row"><span>Strain</span><span id="ttStrain">—</span></div>
+      <div class="tt-row"><span>Anomaly</span><span id="ttAnomaly">—</span></div>
+      <div class="tt-row"><span>Phase</span><span id="ttPhase">—</span></div>
+    </div>
+    <!-- LEGEND -->
+    <div class="legend">
+      <div class="legend-title">STRAIN LEVEL</div>
+      <div class="legend-bar"></div>
+      <div class="legend-labels">
+        <span>LOW</span><span>MED</span><span>HIGH</span><span>CRIT</span>
+      </div>
+    </div>
+    <!-- BGF INDICATOR -->
+    <div class="bgf-indicator">
+      bgf critical = <span>19.15</span>
+    </div>
+  </div>
+
+  <!-- BOTTOM PANEL -->
+  <div id="bottomPanel">
+
+    <!-- REGION LIST -->
+    <div class="panel-section" id="regionPanel">
+      <div class="panel-title">REGIONAL STRAIN</div>
+      <div id="regionList"></div>
     </div>
 
-    <script type="module" src="./js/main.js"></script>
+    <!-- ENGINE READOUT -->
+    <div class="panel-section" id="enginePanel">
+      <div class="panel-title">ENGINE STATE</div>
+      <div class="engine-grid" id="engineGrid"></div>
+    </div>
+
+    <!-- MINI CHART -->
+    <div class="panel-section" id="chartPanel">
+      <div class="panel-title">STRAIN HISTORY</div>
+      <canvas id="historyChart" height="80"></canvas>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- SCRIPTS (順番重要) -->
+<script src="config.js"></script>
+<script src="js/core/Physics.js"></script>
+<script src="js/core/Events.js"></script>
+<script src="js/core/Engine.js"></script>
+<script src="js/visuals/Sphere.js"></script>
+<script src="js/ui/Controls.js"></script>
+<script src="js/main.js"></script>
+
 </body>
 </html>
