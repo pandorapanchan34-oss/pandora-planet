@@ -8,34 +8,61 @@
 </head>
 <body>
     <div class="container">
-        <div class="ui-panel">
-            <header>
+
+        <!-- canvas: style.css の canvas#sphere に合わせる -->
+        <canvas id="sphere"></canvas>
+
+        <!-- 左パネル: .ui-panel + .panel-left -->
+        <div class="ui-panel panel-left">
+
+            <!-- .app-header に変更（style.cssに対応するクラス） -->
+            <header class="app-header">
                 <h1>PANDORA <span>PLANET NODE</span></h1>
-                <!-- ✅ FIX①: 'year' IDを追加 -->
-                <div class="subtitle">bgf ≈ <span id="year">-800Ma</span> | Aetheria</div>
+                <div class="subtitle">
+                    bgf ≈ <span id="year">-800Ma</span> | Aetheria
+                </div>
             </header>
 
             <div class="stats">
-                <div class="stat"><span class="label">PHASE</span><span id="phase" class="value">Pre-Biotic</span></div>
-                <div class="stat"><span class="label">Φ DENSITY</span><span id="phi" class="value">0.000</span></div>
-                <div class="stat"><span class="label">bgf TEMP</span><span id="temp" class="value">--°C</span></div>
-                <div class="stat"><span class="label">STRAIN</span><span id="strain" class="value">0.00</span></div>
-                <!-- ✅ FIX②: 'stability' IDを追加 -->
-                <div class="stat"><span class="label">STABILITY</span><span id="stability" class="value">--%</span></div>
-                <!-- ✅ FIX③: 'pop' IDを追加 -->
-                <div class="stat"><span class="label">POPULATION</span><span id="pop" class="value">--%</span></div>
-                <div class="stat"><span class="label">DRIVE</span><span id="drive" class="value">0.0000</span></div>
+                <div class="stat">
+                    <span class="label">PHASE</span>
+                    <span id="phase" class="value">Pre-Biotic</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Φ DENSITY</span>
+                    <span id="phi" class="value">0.0000</span>
+                </div>
+                <div class="stat">
+                    <span class="label">bgf TEMP</span>
+                    <span id="temp" class="value">--°C</span>
+                </div>
+                <div class="stat">
+                    <span class="label">STRAIN</span>
+                    <span id="strain" class="value">0.00</span>
+                </div>
+                <div class="stat">
+                    <span class="label">STABILITY</span>
+                    <span id="stability" class="value">--%</span>
+                </div>
+                <div class="stat">
+                    <span class="label">POPULATION</span>
+                    <span id="pop" class="value">--%</span>
+                </div>
+                <div class="stat">
+                    <span class="label">DRIVE</span>
+                    <span id="drive" class="value">0.0000</span>
+                </div>
             </div>
 
-            <!-- ✅ FIX④: 'alert-box' IDを追加 -->
+            <!-- アラートボックス -->
             <div id="alert-box" class="alert-box"></div>
 
             <button id="runBtn" class="observe-btn">OBSERVE SINGULARITY</button>
-            <div class="log" id="log"></div>
+
+            <!-- ログ: style.css の #eventLog に合わせてIDを統一 -->
+            <div id="eventLog" class="log"></div>
         </div>
 
-        <!-- ✅ FIX⑤: canvas id を 'sphere' に統一（main.jsは'sphere-canvas'を参照していたが、こちらが正 → main.jsも修正済み） -->
-        <canvas id="sphere"></canvas>
     </div>
 
     <script type="module" src="./js/main.js"></script>
