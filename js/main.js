@@ -86,13 +86,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 1. エンジンとビジュアライザーの生成
     // ※ 惑星の設定を注入
     engine = new PandoraEngine(PLANET_EARTH);
-    
-    // ビジュアライザー（Sphere.js）のインポートと生成
-    const { SphereVisualizer } = await import('./visuals/Sphere.js');
-    visualizer = new SphereVisualizer('sphere-canvas');
+    .`);
+    // ビジュアライザー生成
+const { SphereVisualizer } = await import('./visuals/Sphere.js');
+visualizer = new SphereVisualizer('sphere-canvas');
 
-    window.addLog(`PLANET NODE [${PLANET_EARTH.name}] CONNECTED.`);
-    
+// ★★★ ここを追加 ★★★
+setTimeout(() => {
+    visualizer.resize();           // 強制リサイズ
+    console.log("Canvas size:", visualizer.canvas.width, "×", visualizer.canvas.height);
+}, 50);
+
     // 2. 観測開始ボタン
     const runBtn = document.getElementById('runBtn');
     if (runBtn) {
