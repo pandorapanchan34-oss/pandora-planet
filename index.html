@@ -4,21 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PANDORA PLANET NODE</title>
-    <link rel="stylesheet" href="./assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
     <div class="container">
+        <!-- UI Panel -->
         <div class="ui-panel">
-            <!-- 前のUIはそのまま -->
             <header>
                 <h1>PANDORA <span>PLANET NODE</span></h1>
-                <div class="subtitle">bgf ≈ 19.15 | Aetheria</div>
+                <div class="subtitle">bgf ≈ 19.15 | Φ_earth ≈ 0.906 | 2026.05</div>
             </header>
-            <!-- stats, button, log は省略可。必要なら前のものをコピー -->
+
+            <div class="stats">
+                <div class="stat"><span class="label">PHASE</span><span id="phase" class="value">Complex → Sapient</span></div>
+                <div class="stat"><span class="label">Φ DENSITY</span><span id="phi" class="value">0.906</span></div>
+                <div class="stat"><span class="label">bgf TEMP</span><span id="temp" class="value">19.2°C</span></div>
+                <div class="stat"><span class="label">STRAIN</span><span id="strain" class="value">9.12</span></div>
+                <div class="stat"><span class="label">DRIVE</span><span id="drive" class="value">0.034</span></div>
+            </div>
+
+            <button id="runBtn" class="observe-btn">OBSERVE SINGULARITY</button>
+
+            <div class="log" id="log"></div>
         </div>
+
+        <!-- Canvas -->
         <canvas id="sphere"></canvas>
     </div>
 
-    <script type="module" src="./js/main.js"></script>
+    <script src="config.js"></script>
+    <script src="js/core/Engine.js"></script>
+    <script src="js/visuals/Sphere.js"></script>
+    <script type="module" src="./js/main.js"
 </body>
 </html>
