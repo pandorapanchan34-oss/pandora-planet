@@ -1,53 +1,100 @@
-// js/core/Engine.js
-import { PLANET } from '../../config.js';
+import { PandoraEngine } from './core/Engine.js';
+import { SphereVisualizer } from './visuals/Sphere.js';
+import { PLANET } from '../config.js';
 
-export class PandoraEngine {
-    constructor() {
-        this.active = false;
-        // 宇宙定数と惑星の初期状態
-        this.universal = {
-            bgf: 19.15,
-            B: 24,
-            convergence: 3
-        };
-        
-        this.state = {
-            phi: 0.420,
-            strain: 1.80,
-            temp: 18.0,
-            drive: 0.034,
-            phase: "Pre-Biotic"
-        };
+let engine, visualizer;
+let lastTime = 0;
+
+/**
+ * ログを表示エリアに追加する
+ * @param {string} msg 
+ */
+window.addLog = function(msg) {
+    const log = document.getElementById('log');
+    if (!log) return;
+    
+    const entry = document.createElement('div');
+    entry.textContent = `> ${msg}`;
+    log.prepend(entry);
+    
+    // ログが溜まりすぎないように調整
+    if (log.children.length > 12) {
+        log.removeChild(log.lastChild);
     }
+};
 
-    update(delta) {
-        if (!this.active) return;
-
-        // デルタ時間に基づいた物理演算
-        // 1. Φ (Density) の推移: 有限帯域 B の影響を受ける
-        const growthRate = 0.0001 * (this.universal.B / 24) * delta;
-        this.state.phi = Math.min(this.universal.convergence, this.state.phi + growthRate);
-
-        // 2. Strain (歪み) の計算: n=3 への収束過程で発生する摩擦
-        this.state.strain = 1.6 + (this.state.phi * 2.1) + Math.sin(Date.now() * 0.001) * 0.5;
-
-        // 3. Drive (推進力) と温度の相関
-        this.state.drive = Math.max(0, (this.state.phi * 0.08) - (this.state.strain * 0.01));
-        this.state.temp = 12 + (this.state.phi * 18) + (this.state.drive * 5);
-
-        // 4. フェーズ遷移判定
-        this.checkPhase();
+/**
+ * UIの数値を更新する
+ * @param {object} state 
+ */
+function updateUI(state) {
+    // Engineの状態をDOMに反映
+    document.getElementById('phi').textContent = state.phi.toFixed(4);
+    document.getElementById('temp').textContent = state.temp.toFixed(1) + '°C';
+    document.getElementById('strain').textContent = state.strain.toFixed(2);
+    
+    // config.jsから導入した drive などの追加項目がある場合
+    if (document.getElementById('drive')) {
+        document.getElementById('drive').textContent = state.drive.toFixed(3);
     }
-
-    checkPhase() {
-        if (this.state.phi > 1.4) {
-            this.state.phase = "Sapient";
-        } else if (this.state.phi > 0.85) {
-            this.state.phase = "Cambrian";
-        }
-    }
-
-    getState() {
-        return { ...this.state };
-    }
+    
+    document.getElementById('phase').textContent = state.phase;
 }
+
+/**
+ * メインループ
+ * @param {number} now 
+ */
+function loop(now) {
+    if (!lastTime) lastTime = now;
+    const delta = now - lastTime;
+    lastTime = now;
+
+    // エンジンの計算更新（deltaを渡して時間精度を確保）
+    engine.update(delta);
+    
+    // 最新の状態を取得
+    const state = engine.getState();
+
+    // ビジュアライザーの描画更新
+    visualizer.draw(state, now / 1000);
+    
+    // UI表示の更新
+    updateUI(state);
+
+    requestAnimationFrame(loop);
+}
+
+// 初期化処理
+document.addEventListener('DOMContentLoaded', () => {
+    // コンソールに起動メッセージを表示
+    console.log(`%cPANDORA PLANET NODE: ${PLANET.name}`, 'color:#00ffaa; font-size:14px; font-weight:bold;');
+
+    // 各インスタンスの生成
+    engine = new PandoraEngine();
+    visualizer = new SphereVisualizer('sphere');
+
+    window.addLog(`Planet ${PLANET.name} initialized.`);
+    
+    // エンジン内の定数（bgf等）を表示
+    if (engine.universal && engine.universal.bgf) {
+        window.addLog("bgf ≈ " + engine.universal.bgf.toFixed(2));
+    }
+
+    // 観測開始ボタンの制御
+    const runBtn = document.getElementById('runBtn');
+    if (runBtn) {
+        runBtn.addEventListener('click', () => {
+            engine.active = !engine.active;
+            
+            // ボタンの見た目を切り替え
+            runBtn.textContent = engine.active ? "FREEZE FLOW" : "OBSERVE SINGULARITY";
+            runBtn.style.background = engine.active ? '#ff4488' : '#00ffaa';
+            
+            window.addLog(engine.active ? "DIMENSION FLOW: ACTIVE" : "DIMENSION FLOW: FROZEN");
+        });
+    }
+
+    // ループ開始
+    requestAnimationFrame(loop);
+});
