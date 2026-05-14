@@ -1,100 +1,113 @@
 import { PandoraEngine } from './core/Engine.js';
-import { SphereVisualizer } from './visuals/Sphere.js';
-import { PLANET } from '../config.js';
+import { PLANET_EARTH }  from '../config/planets/earth.js';
 
 let engine, visualizer;
 let lastTime = 0;
 
 /**
- * ログを表示エリアに追加する
- * @param {string} msg 
+ * ログの更新：惑星史のイベントを刻む
  */
-window.addLog = function(msg) {
-    const log = document.getElementById('log');
-    if (!log) return;
+window.addLog = function(msg, level = 'info') {
+    const logEl = document.getElementById('log');
+    if (!logEl) return;
     
     const entry = document.createElement('div');
+    entry.className = `log-entry ${level}`;
     entry.textContent = `> ${msg}`;
-    log.prepend(entry);
+    logEl.prepend(entry);
     
-    // ログが溜まりすぎないように調整
-    if (log.children.length > 12) {
-        log.removeChild(log.lastChild);
+    if (logEl.children.length > 15) {
+        logEl.removeChild(logEl.lastChild);
     }
 };
 
 /**
- * UIの数値を更新する
- * @param {object} state 
+ * UIの同期：全レイヤーの状態を可視化
  */
-function updateUI(state) {
-    // Engineの状態をDOMに反映
-    document.getElementById('phi').textContent = state.phi.toFixed(4);
-    document.getElementById('temp').textContent = state.temp.toFixed(1) + '°C';
-    document.getElementById('strain').textContent = state.strain.toFixed(2);
+function updateUI(status) {
+    // 進行状況
+    document.getElementById('year').textContent = status.year;
+    document.getElementById('phase').textContent = status.phase;
+
+    // 地質層（Body）
+    document.getElementById('phi').textContent = status.body.phi.toFixed(4);
+    document.getElementById('strain').textContent = status.body.strain.toFixed(2);
     
-    // config.jsから導入した drive などの追加項目がある場合
-    if (document.getElementById('drive')) {
-        document.getElementById('drive').textContent = state.drive.toFixed(3);
+    // 環境層（Climate）
+    document.getElementById('temp').textContent = status.climate.surfaceTemp.toFixed(1) + '°C';
+    document.getElementById('stability').textContent = (status.climate.stability * 100).toFixed(0) + '%';
+    
+    // 生命層（Species）
+    document.getElementById('pop').textContent = (status.species.population * 100).toFixed(1) + '%';
+    document.getElementById('drive').textContent = status.species.drive.toFixed(4);
+
+    // アラート表示
+    const alertBox = document.getElementById('alert-box');
+    if (status.body.isDischargeBlocked) {
+        alertBox.classList.add('active');
+        alertBox.textContent = "CRITICAL: DISCHARGE BLOCKED";
+    } else {
+        alertBox.classList.remove('active');
     }
-    
-    document.getElementById('phase').textContent = state.phase;
 }
 
 /**
- * メインループ
- * @param {number} now 
+ * メインループ：時間の流動
  */
 function loop(now) {
     if (!lastTime) lastTime = now;
-    const delta = now - lastTime;
+    const delta = (now - lastTime);
     lastTime = now;
 
-    // エンジンの計算更新（deltaを渡して時間精度を確保）
+    // エンジンの更新
     engine.update(delta);
     
-    // 最新の状態を取得
-    const state = engine.getState();
+    // 状態の取得
+    const status = engine.getFullStatus();
 
-    // ビジュアライザーの描画更新
-    visualizer.draw(state, now / 1000);
-    
-    // UI表示の更新
-    updateUI(state);
+    // 描画とUI更新
+    if (visualizer) visualizer.draw(status, now);
+    updateUI(status);
+
+    // エンジンから新しいログがあれば出力
+    if (status.log && status.log.length > 0) {
+        const latest = status.log[0];
+        if (!window._lastLogTime || latest.time > window._lastLogTime) {
+            window.addLog(`[${latest.year}] ${latest.message}`, latest.level);
+            window._lastLogTime = latest.time;
+        }
+    }
 
     requestAnimationFrame(loop);
 }
 
-// 初期化処理
-document.addEventListener('DOMContentLoaded', () => {
-    // コンソールに起動メッセージを表示
-    console.log(`%cPANDORA PLANET NODE: ${PLANET.name}`, 'color:#00ffaa; font-size:14px; font-weight:bold;');
-
-    // 各インスタンスの生成
-    engine = new PandoraEngine();
-    visualizer = new SphereVisualizer('sphere');
-
-    window.addLog(`Planet ${PLANET.name} initialized.`);
+// 初期化
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. エンジンとビジュアライザーの生成
+    // ※ 惑星の設定を注入
+    engine = new PandoraEngine(PLANET_EARTH);
     
-    // エンジン内の定数（bgf等）を表示
-    if (engine.universal && engine.universal.bgf) {
-        window.addLog("bgf ≈ " + engine.universal.bgf.toFixed(2));
-    }
+    // ビジュアライザー（Sphere.js）のインポートと生成
+    const { SphereVisualizer } = await import('./visuals/Sphere.js');
+    visualizer = new SphereVisualizer('sphere-canvas');
 
-    // 観測開始ボタンの制御
+    window.addLog(`PLANET NODE [${PLANET_EARTH.name}] CONNECTED.`);
+    
+    // 2. 観測開始ボタン
     const runBtn = document.getElementById('runBtn');
     if (runBtn) {
         runBtn.addEventListener('click', () => {
-            engine.active = !engine.active;
-            
-            // ボタンの見た目を切り替え
-            runBtn.textContent = engine.active ? "FREEZE FLOW" : "OBSERVE SINGULARITY";
-            runBtn.style.background = engine.active ? '#ff4488' : '#00ffaa';
-            
-            window.addLog(engine.active ? "DIMENSION FLOW: ACTIVE" : "DIMENSION FLOW: FROZEN");
+            if (!engine.active) {
+                engine.start();
+                runBtn.textContent = "FREEZE FLOW";
+                runBtn.classList.add('active');
+            } else {
+                engine.stop();
+                runBtn.textContent = "OBSERVE SINGULARITY";
+                runBtn.classList.remove('active');
+            }
         });
     }
 
-    // ループ開始
     requestAnimationFrame(loop);
 });
