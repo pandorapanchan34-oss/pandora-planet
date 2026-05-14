@@ -346,3 +346,58 @@ canvas#sphere {
   .panel-right { display: none; }
   .panel-bottom { width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; }
 }
+
+/* ── PLANET SELECTOR ─────────────────────────────────────── */
+.planet-selector {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.planet-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.planet-btn {
+  flex: 1;
+  padding: 7px 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Syne Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.planet-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.planet-btn.active {
+  border-color: var(--accent);
+  color: var(--bg);
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(170,255,68,0.35);
+}
+
+/* MARS アクティブ時はシアン */
+.planet-btn[data-planet="mars"].active {
+  border-color: var(--cyan);
+  background: var(--cyan);
+  box-shadow: 0 0 10px rgba(68,255,238,0.35);
+  color: var(--bg);
+}
+
+/* OCEAN アクティブ時はマゼンタ */
+.planet-btn[data-planet="ocean"].active {
+  border-color: var(--cambrian);
+  background: var(--cambrian);
+  box-shadow: 0 0 10px rgba(0,255,153,0.35);
+  color: var(--bg);
+}
