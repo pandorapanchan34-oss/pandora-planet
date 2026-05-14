@@ -1,119 +1,304 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@800&display=swap');
+/* ============================================================
+   PANDORA EARTH — assets/css/style.css
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Courier+Prime:wght@400;700&display=swap');
 
 :root {
-    --bg: #0a0a08;
-    --panel: rgba(15, 15, 11, 0.9);
-    --border: #252518;
-    --accent: #aaff44;      /* 基底: ネオンライム */
-    --cambrian: #00ff99;   /* カンブリア: ミント */
-    --sapient: #ff44aa;    /* 知性: マゼンタ */
-    --alert: #ff4400;      /* 臨界: レッド */
-    --text: #c8c4a8;
+  --bg:       #020810;
+  --panel:    #030d08;
+  --border:   #0a2018;
+  --green:    #00e5a0;
+  --green-dim:#005530;
+  --amber:    #ffaa00;
+  --red:      #ff2244;
+  --cyan:     #00ccff;
+  --text:     #b8ddc8;
+  --muted:    #1a4028;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin:0; padding:0; box-sizing:border-box; }
 
 body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Syne Mono', monospace;
-    overflow: hidden;
-    height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Courier Prime', monospace;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 背景にうっすらとエントロピーの残滓を */
-body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: radial-gradient(circle at 50% 50%, rgba(170, 255, 68, 0.05) 0%, transparent 70%);
-    pointer-events: none;
+/* ── HEADER ────────────────────────────────────────────────── */
+#header {
+  height: 48px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  flex-shrink: 0;
 }
 
-.container {
-    position: relative;
-    width: 100%;
-    height: 100%;
+.logo {
+  font-family: 'VT323', monospace;
+  font-size: 1.5rem;
+  color: var(--green);
+  text-shadow: 0 0 12px rgba(0,229,160,0.4);
+  letter-spacing: 0.05em;
+}
+.logo em { color: var(--amber); font-style: normal; }
+
+.tagline {
+  font-size: 0.5rem;
+  color: var(--green-dim);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-top: 2px;
 }
 
-/* UIパネル: ガラスモーフィズム */
-.ui-panel {
-    position: absolute;
-    top: 24px;
-    left: 24px;
-    z-index: 100;
-    width: 320px;
-    padding: 24px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
-header h1 {
-    font-family: 'Syne', sans-serif;
-    font-size: 28px;
-    color: var(--accent);
-    letter-spacing: -1px;
-    line-height: 1;
+.hstat { text-align: right; }
+.hstat-label {
+  font-size: 0.5rem;
+  color: var(--green-dim);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.hstat-val {
+  font-family: 'VT323', monospace;
+  font-size: 1.2rem;
+  color: var(--green);
+  line-height: 1;
+}
+.hstat-val.amber { color: var(--amber); }
+.hstat-val.green { color: var(--green); }
+
+.clock {
+  font-size: 0.62rem;
+  color: var(--green-dim);
+  letter-spacing: 0.08em;
+  min-width: 130px;
+  text-align: right;
 }
 
-header h1 span { color: var(--text); font-size: 18px; display: block; }
-.subtitle { font-size: 10px; color: #555; margin-top: 4px; letter-spacing: 2px; }
-
-/* ステータス表示 */
-.stats { margin: 24px 0; }
-.stat {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
+/* ── MAP ───────────────────────────────────────────────────── */
+#mapWrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
 }
 
-.label { font-size: 10px; color: #665; letter-spacing: 1px; }
-.value { font-weight: bold; color: var(--accent); }
-
-/* 観測ボタン */
-.observe-btn {
-    width: 100%;
-    padding: 16px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    cursor: pointer;
-    transition: all 0.3s;
-    letter-spacing: 2px;
+#mapCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
 }
 
-.observe-btn:hover {
-    background: var(--accent);
-    color: var(--bg);
+/* TOOLTIP */
+.tooltip {
+  position: fixed;
+  background: rgba(2,8,16,0.92);
+  border: 1px solid var(--green-dim);
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-size: 0.72rem;
+  pointer-events: none;
+  z-index: 100;
+  min-width: 140px;
+  backdrop-filter: blur(4px);
+}
+.tooltip.hidden { display: none; }
+
+.tt-region {
+  font-family: 'VT323', monospace;
+  font-size: 1.1rem;
+  color: var(--green);
+  margin-bottom: 6px;
+}
+.tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text);
+  margin-bottom: 2px;
+  font-size: 0.68rem;
+}
+.tt-row span:first-child { color: var(--green-dim); }
+
+/* LEGEND */
+.legend {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  font-size: 0.55rem;
+  color: var(--green-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.legend-title { margin-bottom: 4px; }
+.legend-bar {
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    #0a2850,
+    #145040,
+    #b4a000,
+    #dc3c00,
+    #ff1414,
+    #ff00c8
+  );
+  margin-bottom: 3px;
+}
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 120px;
 }
 
-.observe-btn.active {
-    border-color: var(--sapient);
-    color: var(--sapient);
+/* BGF INDICATOR */
+.bgf-indicator {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-size: 0.6rem;
+  color: var(--green-dim);
+  letter-spacing: 0.1em;
+}
+.bgf-indicator span { color: var(--amber); }
+
+/* ── BOTTOM PANEL ──────────────────────────────────────────── */
+#bottomPanel {
+  height: 160px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 280px 1fr 240px;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
-/* ログエリア */
-.log {
-    margin-top: 16px;
-    height: 180px;
+.panel-section {
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.panel-section:last-child { border-right: none; }
+
+.panel-title {
+  font-size: 0.52rem;
+  color: var(--green-dim);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* REGION LIST */
+.region-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 44px 60px;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.region-name {
+  font-size: 0.62rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.region-bar-wrap {
+  height: 4px;
+  background: var(--muted);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.region-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.region-val {
+  font-size: 0.62rem;
+  text-align: right;
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+}
+.region-phase {
+  font-size: 0.52rem;
+  text-align: right;
+  letter-spacing: 0.05em;
+}
+
+/* ENGINE GRID */
+.engine-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.eg-item {
+  background: rgba(0,20,10,0.4);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 5px 8px;
+}
+.eg-label {
+  font-size: 0.48rem;
+  color: var(--green-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 1px;
+}
+.eg-val {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--green);
+}
+
+/* HISTORY CHART */
+#chartPanel canvas {
+  display: block;
+  width: 100% !important;
+}
+
+/* ── SCANLINE ──────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ── SCROLLBAR ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--green-dim); border-radius: 2px; }
+
+/* ── RESPONSIVE ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  #bottomPanel {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: 200px;
     overflow-y: auto;
-    font-size: 11px;
-    line-height: 1.6;
-    color: #887;
-    scrollbar-width: none;
-}
-.log::-webkit-scrollbar { display: none; }
-
-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
+  }
+  .header-right { gap: 10px; }
+  .hstat-val { font-size: 1rem; }
 }
