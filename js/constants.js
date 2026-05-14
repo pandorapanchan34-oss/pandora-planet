@@ -6,7 +6,7 @@
 // 全モジュールはこのファイルのみに依存すること。
 // ============================================================
 
-const PANDORA_CONST = Object.freeze({
+export const PANDORA_CONST = Object.freeze({
 
   // ── 銀河定数 ──────────────────────────────────────────────
   // B   : 銀河の帯域幅（情報容量の上限）
@@ -61,7 +61,7 @@ const PANDORA_CONST = Object.freeze({
 });
 
 // ── 導出値（定数から計算、読み取り専用）──────────────────────
-const PANDORA_DERIVED = Object.freeze({
+export const PANDORA_DERIVED = Object.freeze({
 
   // bgf = (B/N) × (1−TAU) × e の各因子
   B_OVER_N:      PANDORA_CONST.B / PANDORA_CONST.N,         // 8.0
