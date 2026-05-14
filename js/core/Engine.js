@@ -7,62 +7,48 @@
 // 各レイヤーの依存関係を解決しながら計算を進める。
 // ============================================================
 
-
-   /**
- * PANDORA ENGINE: Engine.js (High Efficiency Orchestrator)
- * 修正内容: 再帰ループの廃止、多重スナップショットの統合、循環ログの実装
- */
-
 import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
 import { EarthBody }     from './EarthBody.js';
 import { ClimateSystem } from '../systems/Climate.js';
 import { Species }       from '../plugins/Species.js';
 
 export class PandoraEngine {
+
   constructor(planetConfig = {}) {
+
     this.active = false;
     this.time   = 0;
 
+    // ── 各レイヤーのインスタンス化 ────────────────────────
     this.body    = new EarthBody(planetConfig);
     this.climate = new ClimateSystem(planetConfig);
-    this.species = new Species(planetConfig.species ?? { name: 'Primordial Life' });
+    this.species = new Species(
+      planetConfig.species ?? { name: 'Primordial Life' }
+    );
 
+    // ── 統合状態（UI表示用）──────────────────────────────
     this.state = {
       year:      planetConfig.startYear ?? -800_000_000,
       phase:     'Pre-Biotic',
       prevPhase: null,
     };
 
-    // 指摘3: イベント履歴を循環バッファ形式で管理するための準備
-    this.eventLog  = []; 
+    // ── イベント履歴 ──────────────────────────────────────
+    this.eventLog  = [];
     this._maxLog   = 100;
 
+    // ── ループ制御 ────────────────────────────────────────
     this._rafId    = null;
     this._lastTime = null;
-    this._yearScale = planetConfig.yearScale ?? 1_000;
-
-    // 指摘5: 再帰によるクロージャ生成を避けるためのバインド済みハンドラ
-    this._tick = this._tick.bind(this);
+    this._yearScale = planetConfig.yearScale ?? 1_000; // delta あたりの年数
   }
 
-  // ── ループ制御の改善 ────────────────────────────────
+  // ── 起動 / 停止 / リセット ────────────────────────────
   start() {
     if (this.active) return;
     this.active    = true;
     this._lastTime = performance.now();
-    this._rafId    = requestAnimationFrame(this._tick); // 単一ハンドラへ
-  }
-
-  _tick(ts) {
-    if (!this.active) return;
-    const delta = Math.min((ts - this._lastTime) / 1000, 0.1);
-    this._lastTime = ts;
-    
-    this.update(delta);
-    
-    if (this.active) {
-      this._rafId = requestAnimationFrame(this._tick);
-    }
+    this._loop();
   }
 
   stop() {
@@ -70,34 +56,66 @@ export class PandoraEngine {
     if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
   }
 
-  // ── アップデートルーチンの次元圧縮 ──────────────────
+  reset(planetConfig = {}) {
+    this.stop();
+    Object.assign(this, new PandoraEngine(planetConfig));
+  }
+
+  // ── requestAnimationFrame ループ ─────────────────────
+  _loop() {
+    if (!this.active) return;
+    this._rafId = requestAnimationFrame(ts => {
+      const delta = Math.min((ts - this._lastTime) / 1000, 0.1);
+      this._lastTime = ts;
+      this.update(delta);
+      this._loop();
+    });
+  }
+
+  // ── メインアップデートルーチン ────────────────────────
+  /**
+   * 更新順序（依存関係を解決）:
+   *   1. species.update  → writeout（死による情報還流）
+   *   2. body.setPhi     → Φ更新
+   *   3. body.update     → マントル・Strain計算
+   *   4. climate.update  → 地表温度・天候変換
+   *   5. _updatePhase    → フェーズ遷移判定
+   */
   update(delta) {
     if (!this.active) return;
 
+    // A. 時間進行
     this.time       += delta;
     this.state.year += this._yearScale * delta;
 
-    // 指摘2: スナップショットは「1回だけ撮って使い回す」のが黄金律
-    // EarthBodyの改善により、これらは常に同じ「器」を指すためコスト最小
-    const currentBody    = this.body.getSnapshot();
-    const currentClimate = this.climate.getSnapshot();
-    const currentSpecies = this.species.getSnapshot();
+    // B. 前ステップのスナップショット（依存関係解決用）
+    const bodySnap    = this.body.getSnapshot();
+    const climateSnap = this.climate.getSnapshot();
 
-    // C. 生命活動 → 情報還流
-    const writeout = this.species.update(currentClimate, currentBody, delta);
+    // C. 生命活動 → 情報還流（Death Writeout）
+    //    生命の「死」が惑星の Φ を押し上げる ← Pandora核心
+    const writeout = this.species.update(climateSnap, bodySnap, delta);
     this.body.setPhi(this.body.phi + writeout);
 
-    // D. 地質層の更新
+    // D. 地質層の更新（マントル・エントロピー流）
     this.body.update(delta);
 
-    // E. 環境層の更新（撮り直さず、最新の body/species を参照）
-    this.climate.update(currentBody, currentSpecies, delta);
+    // E. 環境層の更新（地表温度・天候）
+    //    地質の Strain + 生命の Drive を気候に反映
+    this.climate.update(
+      this.body.getSnapshot(),
+      this.species.getSnapshot(),
+      delta
+    );
 
-    // F & G. 判定処理も、最初に撮った currentBody を使用
+    // F. フェーズ遷移判定
     this._updatePhase(this.body.phi);
-    this._checkEvents(currentBody);
+
+    // G. イベント検出
+    this._checkEvents(bodySnap);
   }
 
+  // ── フェーズ遷移判定 ──────────────────────────────────
   _updatePhase(phi) {
     const phi_c = PANDORA_CONST.PHI_IDEAL;
     let next;
@@ -114,11 +132,13 @@ export class PandoraEngine {
     }
   }
 
-  _checkEvents(snap) {
+  // ── イベント検出 ──────────────────────────────────────
+  _checkEvents(prevBodySnap) {
+    const body    = this.body.getSnapshot();
     const climate = this.climate.getSnapshot();
     const species = this.species.getSnapshot();
 
-    if (snap.isDischargeBlocked)
+    if (body.isDischargeBlocked && !prevBodySnap.isDischargeBlocked)
       this._log('DISCHARGE_BLOCKED', 'Strain > discharge band × 2', 'warn');
 
     if (climate.weatherEvent)
@@ -130,31 +150,27 @@ export class PandoraEngine {
     }
   }
 
-  // 指摘3: shift() を使わないロギング（簡易リングバッファ）
+  // ── ログ ──────────────────────────────────────────────
   _log(type, message, level = 'info') {
-    const entry = {
-      time: Math.round(this.time * 100) / 100, // 指摘4: toFixed()を避けMath.round
-      year: Math.round(this.state.year / 1_000_000) + 'Ma',
+    this.eventLog.push({
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
       type, message, level,
-    };
-
-    this.eventLog.push(entry);
-    if (this.eventLog.length > this._maxLog) {
-      this.eventLog.shift(); // 厳密にはここも改善の余地ありですが、頻度が低いので一旦保持
-    }
+    });
+    if (this.eventLog.length > this._maxLog) this.eventLog.shift();
   }
 
+  // ── 全レイヤー統合スナップショット（UI / Visuals 用）─
   getFullStatus() {
     return {
-      time:    Math.round(this.time * 100) / 100,
+      time:    +this.time.toFixed(2),
       year:    Math.round(this.state.year / 1_000_000) + 'Ma',
       phase:   this.state.phase,
       body:    this.body.getSnapshot(),
       climate: this.climate.getSnapshot(),
       species: this.species.getSnapshot(),
       active:  this.active,
-      log:     this.eventLog.slice().reverse(), // UI用コピー
+      log:     [...this.eventLog].reverse(),
     };
   }
 }
-
