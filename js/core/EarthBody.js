@@ -76,8 +76,15 @@ export class EarthBody {
         }
 
         // 1. 北極からのエントロピー吸収（重力勾配）
+        //    EarthBodyがΦ管理の責務を持つので、ここで直接Φに反映する
         this.entropyInflow =
             PANDORA_CONST.B * (1 - this.phi) * 0.01 * this.gravityScale;
+
+        // 北極吸収 → Φ上昇（情報場への蓄積）
+        // inflowが大きいほどΦが上がり、やがて過飽和へ
+        this.phi = Math.min(1.05,
+            this.phi + this.entropyInflow * 0.0002 * delta
+        );
 
         // 2. Φ→Strain非線形変換（Pandora Theory）
         //
