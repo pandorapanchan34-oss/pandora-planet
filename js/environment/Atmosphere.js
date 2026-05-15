@@ -14,7 +14,7 @@
  *   酸素増加 → 動物誕生条件の一部
  */
 
-import { convertRaw } from '../core/Entropy.js';
+import { convertRaw } from '../core/Entropy.j';
 import { PANDORA_CONST } from '../constants.js';
 
 const BGF = PANDORA_CONST.BGF;
