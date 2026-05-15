@@ -3,7 +3,7 @@
 // オーケストレーター（統合版）
 // ============================================================
 
-import { PANDORA_CONST } from '../constants.js';
+import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
 import { Events, EVENT, HistoryManager } from './Events.js';
 import { EarthBody }     from './EarthBody.js';
 import { ClimateSystem } from '../environment/Climate.js';
