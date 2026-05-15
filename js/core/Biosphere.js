@@ -34,7 +34,8 @@ import {
     S_MARGIN_ANIMAL,
 } from './Entropy.js';
 
-import { Plant, selectPlantType } from '../entities/Plant.js';
+import { Plant, selectPlantType }   from '../entities/Plant.js';
+import { Animal, selectAnimalType } from '../entities/Animal.js';
 
 // 冷却期間（ステップ数）
 const COOLING_PERIOD   = 180;
@@ -42,6 +43,8 @@ const COOLING_PERIOD   = 180;
 const MAX_PLANTS       = 50;
 // 植物population→writeout変換係数（旧Species.jsから継承）
 const WRITEOUT_EFF     = 0.0075;
+// 同時に存在できる動物の最大数
+const MAX_ANIMALS      = 30;
 
 export class Biosphere {
 
@@ -117,6 +120,11 @@ export class Biosphere {
         // 4. 植物群の更新
         this._updatePlants(env, delta, phi, strain);
 
+        // 4b. 動物群の更新（動物誕生後）
+        if (this.animalTriggered) {
+            this._updateAnimals(env, delta, phi, strain);
+        }
+
         // 5. S_margin蓄積（デフラグ中）
         const hasPlant = this.plants.some(p => p.alive);
         if (hasPlant && this.s_local < this.s_critical) {
@@ -125,9 +133,7 @@ export class Biosphere {
 
         // 6. 動物誕生トリガー
         if (!triggered && !this.animalTriggered && isAnimalTrigger(this.s_margin, hasPlant)) {
-            this.animalTriggered = true;
-            this.phase = 'animal_ready';
-            triggered = { type: 'animal' };
+            triggered = this._onAnimalGenesis(phi, env);
         }
 
         // 7. フェーズ更新
@@ -163,6 +169,42 @@ export class Biosphere {
         return { type: 'plant' };
     }
 
+    // ── 動物誕生処理 ──────────────────────────────────────
+    _onAnimalGenesis(phi, env) {
+        this.animalTriggered = true;
+        this.phase = 'animal_ready';
+        this._spawnAnimal(env);
+        return { type: 'animal' };
+    }
+
+    // ── 動物のスポーン ────────────────────────────────────
+    _spawnAnimal(env) {
+        if (this.animals.length >= MAX_ANIMALS) return;
+        const animalType = selectAnimalType(env);
+        this.animals.push(new Animal({ animalType }));
+    }
+
+    // ── 動物群の更新 ──────────────────────────────────────
+    _updateAnimals(env, delta, phi, strain) {
+        const toReproduce = [];
+
+        for (const animal of this.animals) {
+            animal._lastOxygenLevel = env.oxygenLevel ?? 0.01;
+            animal.update(env, delta);
+
+            if (animal.readyToReproduce && this.animals.length < MAX_ANIMALS) {
+                animal.readyToReproduce = false;
+                toReproduce.push(env);
+            }
+        }
+
+        // 死んだ動物を除去
+        this.animals = this.animals.filter(a => a.alive || a.age < a.lifespan * 1.05);
+
+        // 新しい動物を追加
+        for (const e of toReproduce) this._spawnAnimal(e);
+    }
+
     // ── 植物のスポーン ────────────────────────────────────
     _spawnPlant(env) {
         if (this.plants.length >= MAX_PLANTS) return;
@@ -193,10 +235,11 @@ export class Biosphere {
 
     // ── エントロピー合計 ──────────────────────────────────
     _calcEntropyTotal(phi, strain) {
-        if (this.plants.length === 0) return 0;
-        return this.plants.reduce((sum, p) => {
-            return sum + p.getEntropyContribution(phi, strain);
-        }, 0);
+        const plantEntropy = this.plants.reduce((sum, p) =>
+            sum + p.getEntropyContribution(phi, strain), 0);
+        const animalEntropy = this.animals.reduce((sum, a) =>
+            sum + a.getEntropyContribution(phi, strain), 0);
+        return plantEntropy + animalEntropy;
     }
 
     // ── Writeout（死による情報還流） ─────────────────────
@@ -221,9 +264,12 @@ export class Biosphere {
         const types = new Set(this.plants.filter(p => p.alive).map(p => p.plantType));
         this.biodiversity = types.size / 4; // 4種類が最大
 
-        // drive：動物誕生後に蓄積（将来用）
-        if (this.animalTriggered) {
-            this.drive = Math.min(1, this.drive + 0.0001 * delta);
+        // drive：動物のdriveAccum合計
+        if (this.animalTriggered && this.animals.length > 0) {
+            const totalDrive = this.animals
+                .filter(a => a.alive)
+                .reduce((s, a) => s + a.drive, 0);
+            this.drive = Math.min(1, totalDrive / Math.max(1, this.animals.length));
         }
     }
 
@@ -316,7 +362,7 @@ export class Biosphere {
             s_margin:       +this.s_margin.toFixed(3),
             saturation:     +this.saturation.toFixed(3),
             plantCount:     alivePlants,
-            animalCount:    this.animals.length,
+            animalCount:    this.animals.filter(a => a.alive).length,
             plantTriggered: this.plantTriggered,
             animalTriggered:this.animalTriggered,
             coolingTimer:   this.coolingTimer,
