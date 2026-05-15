@@ -3,16 +3,9 @@
  *
  * 全生命体の基底クラス
  *
- * 役割：
- *   Plant.js / Animal.js が継承する共通インターフェース。
- *   「生きている」「死ぬ」「エントロピーを返す」という
- *   生命の最小単位の振る舞いを定義する。
- *
- * 設計方針：
- *   - 状態を持つ（生死・年齢・位置）
- *   - Entropy.jsの式を使って自分の局所エントロピーを計算する
- *   - getEntropyContribution()でEngineに値を返す
- *   - 継承クラスは _onUpdate() / _onDeath() をオーバーライドする
+ * bgf ≈ 19.15 は情報相関の臨界点。
+ * 温度は bgf との「摩擦」として機能する。
+ * 温度が bgf から大きく乖離すると摩擦が増大し、生命にストレスとなる。
  *
  * ─────────────────────────────────────────────────────
  * エントロピーフロー：
@@ -23,8 +16,10 @@
  */
 
 import { calcSLocal } from '../core/Entropy.js';
+import { PANDORA_CONST } from '../constants.js';
 
-// 生命体の種別
+const BGF = PANDORA_CONST.BGF; // 19.15
+
 export const ENTITY_TYPE = Object.freeze({
     PLANT:  'plant',
     ANIMAL: 'animal',
@@ -34,107 +29,96 @@ export class Individual {
 
     /**
      * @param {object} config
-     * @param {string} config.type        - ENTITY_TYPE
-     * @param {number} config.lifespan    - 最大寿命（ステップ数）
-     * @param {number} config.negentropyRate - 負エントロピー生成率（植物）
-     * @param {number} config.entropyRate    - エントロピー消費率（動物）
-     * @param {number} [config.x]         - グリッドX座標（将来用）
-     * @param {number} [config.y]         - グリッドY座標（将来用）
+     * @param {string} config.type
+     * @param {number} config.lifespan
+     * @param {number} config.negentropyRate
+     * @param {number} config.entropyRate
+     * @param {number} [config.x]
+     * @param {number} [config.y]
      */
     constructor(config = {}) {
-        this.type    = config.type    ?? ENTITY_TYPE.PLANT;
-        this.lifespan = config.lifespan ?? 1000;
+        this.type           = config.type           ?? ENTITY_TYPE.PLANT;
+        this.lifespan       = config.lifespan       ?? 1000;
         this.negentropyRate = config.negentropyRate ?? 0;
         this.entropyRate    = config.entropyRate    ?? 0;
 
-        // 座標（将来のGrid実装用、今は未使用）
+        // 座標（将来のGrid実装用）
         this.x = config.x ?? 0;
         this.y = config.y ?? 0;
 
         // 状態
         this.age      = 0;
         this.alive    = true;
-        this.maturity = 0;   // 成熟度（0〜1）、成長するほど効果が大きくなる
+        this.maturity = 0;   // 0〜1、lifespan×20%で成熟
 
-        // 死因
         this.causeOfDeath = null;
     }
 
     // ── メイン更新 ────────────────────────────────────────
-    /**
-     * @param {object} env - { phi, strain, temp, stability }
-     * @param {number} delta
-     */
     update(env, delta) {
         if (!this.alive) return;
 
-        this.age += delta;
-
-        // 成熟度更新（lifespan の 20% で成熟）
+        this.age     += delta;
         this.maturity = Math.min(1, this.age / (this.lifespan * 0.2));
 
-        // 寿命チェック
         if (this.age >= this.lifespan) {
             this._die('lifespan');
             return;
         }
 
-        // 環境ストレスチェック
         const stress = this._calcStress(env);
         if (stress >= 1.0) {
             this._die('environment');
             return;
         }
 
-        // サブクラス固有の更新
         this._onUpdate(env, delta, stress);
     }
 
-    // ── エントロピー貢献値を返す（Engineが集約する）────
-    /**
-     * 正値  = エントロピー増加（動物の消費・死体分解など）
-     * 負値  = エントロピー減少（植物の負エントロピー生成）
-     *
-     * @param {number} phi
-     * @param {number} strain
-     * @returns {number}
-     */
+    // ── エントロピー貢献値（Engineが集約）────────────────
     getEntropyContribution(phi, strain) {
         if (!this.alive) {
-            // 死体：エントロピーを放出（分解）
-            return calcSLocal(phi, strain) * 0.01;
+            return calcSLocal(phi, strain) * 0.01; // 死体：分解で放出
         }
 
-        const maturityFactor = 0.3 + this.maturity * 0.7; // 未成熟でも30%効果
+        const maturityFactor = 0.3 + this.maturity * 0.7;
 
         if (this.negentropyRate > 0) {
-            // 植物：負エントロピー（S を下げる）
             return -calcSLocal(phi, strain) * this.negentropyRate * maturityFactor;
         }
-
         if (this.entropyRate > 0) {
-            // 動物：エントロピー消費（Driveとして蓄積）
-            return calcSLocal(phi, strain) * this.entropyRate * maturityFactor;
+            return  calcSLocal(phi, strain) * this.entropyRate    * maturityFactor;
         }
-
         return 0;
     }
 
-    // ── 環境ストレス計算（0〜1） ─────────────────────────
+    // ── 環境ストレス（bgf摩擦ベース）────────────────────
     /**
-     * サブクラスでオーバーライド可能。
-     * デフォルト：温度・安定度から計算
+     * 温度 = bgf摩擦として統一的に扱う。
+     * bgf=19.15 が情報相関の臨界点（摩擦最小点）。
+     * そこから離れるほど指数的にストレスが増大する。
      */
     _calcStress(env) {
-        const { temp = 15, stability = 1.0 } = env;
+        const {
+            temp       = 15,
+            bgf        = BGF,
+            stability  = 1.0,
+            strain     = 0,
+        } = env;
 
-        // 温度ストレス（最適温度15°Cから離れると増加）
-        const tempStress = Math.max(0, Math.abs(temp - 15) / 60);
+        // 温度 = bgf摩擦
+        const bgfFriction   = Math.abs(temp - bgf) / bgf;
+        const frictionStress = Math.pow(bgfFriction, 1.8) * 1.6;
 
-        // 不安定ストレス
-        const stabilityStress = Math.max(0, 1 - stability);
+        // Strainストレス（5.5超で発生）
+        const strainStress = Math.max(0, (strain - 5.5) / 9.0);
 
-        return Math.min(1, tempStress + stabilityStress * 0.5);
+        // 安定性ストレス
+        const stabilityStress = Math.max(0, 1 - stability) * 0.5;
+
+        return Math.min(1.0,
+            frictionStress + strainStress * 0.7 + stabilityStress
+        );
     }
 
     // ── 死亡処理 ──────────────────────────────────────────
@@ -144,11 +128,8 @@ export class Individual {
         this._onDeath(cause);
     }
 
-    // ── サブクラス用フック（オーバーライドして使う）────
-    /** @param {object} env @param {number} delta @param {number} stress */
+    // ── サブクラス用フック ────────────────────────────────
     _onUpdate(env, delta, stress) {}
-
-    /** @param {string} cause */
     _onDeath(cause) {}
 
     // ── スナップショット ───────────────────────────────────
