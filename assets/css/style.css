@@ -106,9 +106,14 @@ canvas#sphere {
 
 /* 左パネル（メイン情報）*/
 .panel-left {
-  top: 20px; left: 20px;
-  width: 300px;
-  padding: 22px;
+  top: 12px; left: 12px;
+  width: 260px;
+  padding: 16px;
+  /* 画面高さを超えたらスクロール */
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
 }
 
 /* 右パネル（フェーズ・ログ）*/
@@ -400,4 +405,76 @@ canvas#sphere {
   background: var(--cambrian);
   box-shadow: 0 0 10px rgba(0,255,153,0.35);
   color: var(--bg);
+}
+
+/* ── SPEED BUTTONS ───────────────────────────────────────── */
+.speed-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.speed-btn {
+  flex: 1;
+  padding: 5px 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Syne Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.speed-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.speed-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 0 8px rgba(170,255,68,0.4);
+}
+
+/* ── ERA CONTROL ─────────────────────────────────────────── */
+.era-control {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.era-jump-btns {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.era-btn {
+  flex: 1;
+  min-width: 44px;
+  padding: 5px 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Syne Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.era-btn:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.era-btn.active {
+  border-color: var(--cyan);
+  background: rgba(68,255,238,0.15);
+  color: var(--cyan);
 }
