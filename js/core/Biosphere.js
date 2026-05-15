@@ -52,7 +52,7 @@ export class Biosphere {
     update(body, climate, delta) {
         // 1. エントロピー基本状態の計算（Entropy.jsを使用）
         this.s_local    = calcSLocal(body.phi, body.strain);
-        this.s_critical = calcSCritical(body.phi);
+        this.s_critical = calcSCritical(body.strain);
         this.saturation = calcSaturation(this.s_local, this.s_critical);
 
         let totalCooling  = 0;
@@ -61,7 +61,7 @@ export class Biosphere {
         // 2. フェーズ管理ロジック
         if (this.phase === 'accumulation') {
             // 誕生トリガーチェック
-            if (isPlantTrigger(this.saturation, body.strain) && !this.plantTriggered) {
+            if (isPlantTrigger(this.s_local, this.s_critical, body.strain) && !this.plantTriggered) {
                 this._genesisPlant();
                 this.plantTriggered = true;
                 this.phase = 'cooling';
@@ -145,8 +145,13 @@ export class Biosphere {
             population:   +this.population.toFixed(3),
             biodiversity: +this.biodiversity.toFixed(3),
             plantCount:   this.plants.filter(p => p.alive).length,
+            drive:        +this.drive.toFixed(4),
             s_local:      +this.s_local.toFixed(4),
-            saturation:   +this.saturation.toFixed(3)
+            s_critical:   +this.s_critical.toFixed(4),
+            saturation:   +this.saturation.toFixed(3),
+            plantTriggered: this.plantTriggered,
+            animalTriggered: this.animalTriggered,
+            isExtinct:    this.population <= 0
         };
     }
 }
