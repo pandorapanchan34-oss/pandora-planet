@@ -1,5 +1,5 @@
 // ============================================================
-// PANDORA EARTH — js/systems/Climate.js
+// PANDORA EARTH — js/environment/Climate.js
 // 地表シミュレーター
 //
 // Physics層（EarthBody）からの Strain を受け取り、
