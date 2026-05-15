@@ -4,9 +4,6 @@ import { PLANET_EARTH }  from '../config/planets/earth.js';
 let engine, visualizer;
 let lastTime = 0;
 
-/**
- * ログの更新：惑星史のイベントを刻む
- */
 window.addLog = function(msg, level = 'info') {
     const logEl = document.getElementById('log');
     if (!logEl) return;
@@ -21,24 +18,23 @@ window.addLog = function(msg, level = 'info') {
     }
 };
 
-/**
- * UIの同期：nullガード付きで安全に更新
- */
 function setEl(id, value) {
-    // ✅ FIX③: 存在しないIDへのアクセスでTypeErrorが出てループが死ぬのを防ぐ
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
 
 function updateUI(status) {
-    setEl('year',      status.year);
-    setEl('phase',     status.phase);
-    setEl('phi',       status.body.phi.toFixed(4));
-    setEl('strain',    status.body.strain.toFixed(2));
-    setEl('temp',      status.climate.surfaceTemp.toFixed(1) + '°C');
-    setEl('stability', (status.climate.stability * 100).toFixed(0) + '%');
-    setEl('pop',       (status.species.population * 100).toFixed(1) + '%');
-    setEl('drive',     status.species.drive.toFixed(4));
+    setEl('year',   status.year);
+    setEl('phase',  status.phase);
+    setEl('phi',    status.body.phi.toFixed(4));
+    setEl('strain', status.body.strain.toFixed(2));
+    setEl('temp',   (status.climate.surfaceTemp ?? 15).toFixed(1) + '°C');
+    setEl('stability', ((status.body.stability ?? status.climate.stability) * 100).toFixed(0) + '%');
+
+    // ✅ Biosphere対応（旧species互換も残す）
+    const bio = status.biosphere || status.species;
+    setEl('pop',   (bio.population * 100).toFixed(1) + '%');
+    setEl('drive', (bio.drive ?? 0).toFixed(4));
 
     const alertBox = document.getElementById('alert-box');
     if (alertBox) {
@@ -52,31 +48,25 @@ function updateUI(status) {
     }
 }
 
-/**
- * メインループ
- * ✅ FIX①: Engineの_loop()は使わず、ここで一元管理する
- * ✅ FIX④: deltaをミリ秒→秒に変換してEngineと単位を合わせる
- */
 function loop(now) {
     if (!lastTime) lastTime = now;
-    // ミリ秒→秒、スパイク対策で0.1秒上限
     const delta = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
-    // engineがactiveな時だけupdate（Engine内部のループは使わない）
     if (engine && engine.active) {
         engine.update(delta);
     }
 
-    const status = engine.getFullStatus();
+    const status = engine ? engine.getFullStatus() : {};
 
     if (visualizer) visualizer.draw(status, now);
     updateUI(status);
 
+    // 最新ログ表示
     if (status.log && status.log.length > 0) {
         const latest = status.log[0];
         if (!window._lastLogTime || latest.time > window._lastLogTime) {
-            window.addLog(`[${latest.year}] ${latest.message}`, latest.level);
+            window.addLog(`[${latest.year}] ${latest.message}`, latest.level || 'info');
             window._lastLogTime = latest.time;
         }
     }
@@ -88,26 +78,25 @@ function loop(now) {
 document.addEventListener('DOMContentLoaded', async () => {
     engine = new PandoraEngine(PLANET_EARTH);
 
-    // ✅ FIX②: canvas IDを 'sphere' に統一（index.htmlの<canvas id="sphere">と一致）
-    const { SphereVisualizer } = await import('./visuals/Sphere.js');
-    visualizer = new SphereVisualizer('sphere');
+    // Visualizer読み込み
+    try {
+        const { SphereVisualizer } = await import('./visuals/Sphere.js');
+        visualizer = new SphereVisualizer('sphere');
+    } catch (e) {
+        console.warn('Visualizer could not be loaded:', e);
+    }
 
-    window.addLog(`PLANET NODE [${PLANET_EARTH.name}] CONNECTED.`);
+    window.addLog(`PLANET NODE [${PLANET_EARTH.name || 'EARTH'}] CONNECTED.`, 'phase');
 
     const runBtn = document.getElementById('runBtn');
     if (runBtn) {
         runBtn.addEventListener('click', () => {
             if (!engine.active) {
-                // ✅ FIX①: engine.start()はEngine内部の_loop()を起動するが、
-                // ここではactive フラグだけ立てる形にしたい。
-                // Engine.start()が_loop()を呼ぶ実装のままなら、
-                // Engine側の_loop()内のupdateを無効化する必要がある。
-                // → Engine_v2.jsの修正コメント参照（activeフラグのみセット）
-                engine.active = true;
+                engine.start();
                 runBtn.textContent = "FREEZE FLOW";
                 runBtn.classList.add('active');
             } else {
-                engine.active = false;
+                engine.stop();
                 runBtn.textContent = "OBSERVE SINGULARITY";
                 runBtn.classList.remove('active');
             }
