@@ -1,10 +1,14 @@
 // ============================================================
-// PANDORA EARTH — js/core/Engine.js
-// オーケストレーター（統合版）
+// PANDORA EARTH — js/core/Engine.js  (v2 layered)
+// オーケストレーター
+//
+// ✅ FIX①: 内部の_loop()/requestAnimationFrameを削除。
+//    ループはmain.jsが一元管理する。
+//    Engine.update(delta)はmain.jsから呼ばれる外部駆動方式に変更。
+//    start()/stop()はactiveフラグの管理のみ行う。
 // ============================================================
 
 import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
-import { Events, EVENT, HistoryManager } from './Events.js';
 import { EarthBody }     from './EarthBody.js';
 import { ClimateSystem } from '../environment/Climate.js';
 import { Species }       from '../plugins/Species.js';
@@ -12,99 +16,98 @@ import { Species }       from '../plugins/Species.js';
 export class PandoraEngine {
 
   constructor(planetConfig = {}) {
+
     this.active = false;
     this.time   = 0;
 
     // ── 各レイヤーのインスタンス化 ────────────────────────
-    // 物理：地殻・歪み・Φ管理
-    this.body = new EarthBody(planetConfig);
-
-    // 生命：個体管理・エントロピー冷却
-    this.biosphere = new Biosphere();
-
-    // 環境：気候・温度（EarthBodyのスナップショットに依存）
+    this.body    = new EarthBody(planetConfig);
     this.climate = new ClimateSystem(planetConfig);
+    this.species = new Species(
+      planetConfig.species ?? { name: 'Primordial Life' }
+    );
 
-    // ── 統合状態 ──────────────────────────────────────
+    // ── 統合状態（UI表示用）──────────────────────────────
     this.state = {
       year:      planetConfig.startYear ?? -800_000_000,
       phase:     'Pre-Biotic',
       prevPhase: null,
     };
 
-    this.eventLog = [];
-    this._maxLog  = 100;
-    this._yearScale = 1000; // 1秒あたりの経過年数
+    // ── イベント履歴 ──────────────────────────────────────
+    this.eventLog  = [];
+    this._maxLog   = 100;
 
-    // ── グローバルイベントの購読 ────────────────────────
-    this._initGlobalListeners();
+    this._yearScale = planetConfig.yearScale ?? 1_000; // delta(秒)あたりの年数
   }
 
-  _initGlobalListeners() {
-    // ブラックホール化イベント受信時：システム全停止
-    Events.on(EVENT.BLACK_HOLE, (payload) => {
-      this._log('SINGULARITY', payload.message, 'critical');
-      this.stop();
-      // Biosphere側でもデータ破棄等の処理が必要ならここで呼ぶ
-    });
-  }
-
+  // ── 起動 / 停止 / リセット ────────────────────────────
+  // ✅ FIX①: start()はactiveフラグを立てるだけ。ループはmain.jsが管理。
   start() {
     this.active = true;
-    this._log('SYSTEM', 'Engine started.', 'info');
   }
 
   stop() {
     this.active = false;
-    this._log('SYSTEM', 'Engine stopped.', 'warn');
   }
 
+  reset(planetConfig = {}) {
+    this.stop();
+    Object.assign(this, new PandoraEngine(planetConfig));
+  }
+
+  // ── メインアップデートルーチン ────────────────────────
+  // deltaは秒単位（main.jsで変換済み）
   /**
-   * メインアップデートループ (main.js から呼ばれる)
-   * @param {number} delta - 前フレームからの経過時間
+   * 更新順序（依存関係を解決）:
+   *   1. species.update  → writeout（死による情報還流）
+   *   2. body.setPhi     → Φ更新
+   *   3. body.update     → マントル・Strain計算
+   *   4. climate.update  → 地表温度・天候変換
+   *   5. _updatePhase    → フェーズ遷移判定
    */
   update(delta) {
+    // ✅ FIX①: activeチェックはmain.js側で行うが、二重保護として残す
     if (!this.active) return;
 
-    // 1. 時間の進行
-    this.time += delta;
+    // A. 時間進行
+    this.time       += delta;
     this.state.year += this._yearScale * delta;
 
-    // 2. 各層のスナップショット取得（計算用）
+    // B. 前ステップのスナップショット（依存関係解決用）
     const bodySnap    = this.body.getSnapshot();
     const climateSnap = this.climate.getSnapshot();
 
-    // 3. Biosphere（生命圏）の更新
-    //    物理・環境状態を受け取り、エントロピーの変動(delta)と
-    //    個体の死による情報還流(writeout)を算出する
-    const bioResult = this.biosphere.update(bodySnap, climateSnap, delta);
+    // C. 生命活動 → 情報還流（Death Writeout）
+    const writeout = this.species.update(climateSnap, bodySnap, delta);
+    this.body.setPhi(this.body.phi + writeout);
 
-    // 4. EarthBody（物理層）へのフィードバック
-    //    生命活動による「冷却」と「還流」を Φ に反映
-    const nextPhi = this.body.phi + bioResult.entropyDelta + bioResult.writeout;
-    this.body.setPhi(nextPhi);
-
-    // 5. 物理層の内的更新（Strainの蓄積・解放、Φの境界チェック）
+    // D. 地質層の更新
     this.body.update(delta);
 
-    // 6. 環境層の更新（新しい物理状態を反映）
-    this.climate.update(this.body.getSnapshot(), bioResult, delta);
+    // E. 環境層の更新
+    this.climate.update(
+      this.body.getSnapshot(),
+      this.species.getSnapshot(),
+      delta
+    );
 
-    // 7. 臨界状態の監視 (HistoryManagerによる一元監視)
-    //    内部で EVENT.BLACK_HOLE や EVENT.STRAIN_CRITICAL を発行
-    HistoryManager.checkCriticalStates(this);
-
-    // 8. フェーズ遷移管理
+    // F. フェーズ遷移判定
     this._updatePhase(this.body.phi);
+
+    // G. イベント検出
+    this._checkEvents(bodySnap);
   }
 
   // ── フェーズ遷移判定 ──────────────────────────────────
   _updatePhase(phi) {
-    let next = 'Pre-Biotic';
-    if (phi > 0.6)  next = 'Primordial';
-    if (phi > 0.8)  next = 'Synchronized';
-    if (phi > 0.95) next = 'Unstable';
-    if (this.body.isBlackHole) next = 'Singularity';
+    const phi_c = PANDORA_CONST.PHI_IDEAL;
+    let next;
+    if      (phi > phi_c * 1.20) next = 'Sapient';
+    else if (phi > phi_c * 1.10) next = 'Complex';
+    else if (phi > phi_c)        next = 'Multicellular';
+    else if (phi > 0.70)         next = 'Cambrian';
+    else                         next = 'Pre-Biotic';
 
     if (next !== this.state.phase) {
       this._log('PHASE', `${this.state.phase} → ${next}`, 'phase');
@@ -113,35 +116,45 @@ export class PandoraEngine {
     }
   }
 
-  // ── ログ出力 ──────────────────────────────────────────
-  _log(type, message, level = 'info') {
-    const entry = {
-      time:  +this.time.toFixed(2),
-      year:  Math.round(this.state.year / 1_000_000) + 'Ma',
-      type, message, level,
-    };
-    this.eventLog.push(entry);
-    if (this.eventLog.length > this._maxLog) this.eventLog.shift();
-    
-    // 開発用コンソール出力
-    if (level === 'critical') console.error(`[${type}] ${message}`);
+  // ── イベント検出 ──────────────────────────────────────
+  _checkEvents(prevBodySnap) {
+    const body    = this.body.getSnapshot();
+    const climate = this.climate.getSnapshot();
+    const species = this.species.getSnapshot();
+
+    if (body.isDischargeBlocked && !prevBodySnap.isDischargeBlocked)
+      this._log('DISCHARGE_BLOCKED', 'Strain > discharge band × 2', 'warn');
+
+    if (climate.weatherEvent)
+      this._log('WEATHER', climate.weatherEvent, 'info');
+
+    if (species.isExtinct) {
+      this._log('EXTINCTION', species.extinctionCause, 'critical');
+      this.stop();
+    }
   }
 
-  /**
-   * 全レイヤーの統合状態取得（UI / Visuals 用）
-   */
+  // ── ログ ──────────────────────────────────────────────
+  _log(type, message, level = 'info') {
+    this.eventLog.push({
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      type, message, level,
+    });
+    if (this.eventLog.length > this._maxLog) this.eventLog.shift();
+  }
+
+  // ── 全レイヤー統合スナップショット（UI / Visuals 用）─
   getFullStatus() {
     return {
-      engine: {
-        time:  +this.time.toFixed(2),
-        year:  this.state.year,
-        phase: this.state.phase,
-        active: this.active
-      },
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      phase:   this.state.phase,
       body:    this.body.getSnapshot(),
-      bio:     this.biosphere.getSnapshot(),
       climate: this.climate.getSnapshot(),
-      events:  [...this.eventLog].reverse()
+      species: this.species.getSnapshot(),
+      active:  this.active,
+      log:     [...this.eventLog].reverse(),
     };
   }
 }
