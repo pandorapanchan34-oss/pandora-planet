@@ -62,7 +62,7 @@ export class Biosphere {
         if (this.phase === 'accumulation') {
             // 誕生トリガーチェック
             if (isPlantTrigger(this.s_local, this.s_critical, body.strain) && !this.plantTriggered) {
-                this._genesisPlant();
+                this._genesisPlant(env);
                 this.plantTriggered = true;
                 this.phase = 'cooling';
                 this.coolingTimer = COOLING_PERIOD;
@@ -75,18 +75,30 @@ export class Biosphere {
         }
 
         // 3. 植物個体の更新
+        // envオブジェクトをひとつに統合してPlant.update(env, delta)に渡す
+        const env = {
+            temp:      climate.surfaceTemp ?? 19.15,
+            stability: climate.stability   ?? 1.0,
+            strain:    body.strain         ?? 0,
+            phi:       body.phi            ?? 0.82,
+            bgf:       body.bgf            ?? 19.15,
+        };
+
         this.plants.forEach(plant => {
-            const res = plant.update(climate, body, delta);
-            
-            // 冷却効果の集計（生存中のみ）
+            const wasAlive = plant.alive;
+            plant.update(env, delta);
+
+            // 冷却効果（生存中のみ）
             if (plant.alive) {
-                totalCooling += calcCoolingEffect(plant.level, this.saturation);
+                totalCooling += calcCoolingEffect(
+                    this.s_local,
+                    this.coolingTimer / COOLING_PERIOD
+                );
             }
-            
+
             // 死による情報の還流（死亡した瞬間のみ）
-            if (plant.justDied) {
-                totalWriteout += (plant.level * WRITEOUT_EFF);
-                plant.justDied = false; // 重複加算防止
+            if (wasAlive && !plant.alive) {
+                totalWriteout += plant.nutrientYield * WRITEOUT_EFF;
             }
         });
 
@@ -109,13 +121,10 @@ export class Biosphere {
     /**
      * 新しい植物の誕生
      */
-    _genesisPlant() {
+    _genesisPlant(env = {}) {
         if (this.plants.length >= MAX_PLANTS) return;
-        
-        const type = selectPlantType();
-        const newPlant = new Plant(type);
-        this.plants.push(newPlant);
-        console.log(`[Biosphere] Plant Genesis: ${type}`);
+        const plantType = selectPlantType(env);
+        this.plants.push(new Plant({ plantType }));
     }
 
     /**
