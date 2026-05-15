@@ -10,7 +10,7 @@
 
 import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
 import { EarthBody }     from './EarthBody.js';
-import { ClimateSystem } from '../environment/Climate.js';
+import { ClimateSystem } from '../systems/Climate.js';
 import { Species }       from '../plugins/Species.js';
 
 export class PandoraEngine {
