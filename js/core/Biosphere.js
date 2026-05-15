@@ -1,24 +1,6 @@
 /**
  * PANDORA EARTH — js/core/Biosphere.js
- *
- * 生命圏全体の状態管理
- *
- * 役割：
- *   - Entropy.jsの計算式を使って生命圏の状態を管理する
- *   - Plant/Animalの誕生・死亡・繁殖を統括する
- *   - coolingMode・S_margin・フェーズなど生命関連の状態を持つ
- *   - Engine.jsにエントロピー貢献値の合計を返す
- *
- * 設計方針：
- *   - Entropy.jsはpure function群として使う（状態はここで持つ）
- *   - Species.jsの役割を吸収（削除済み）
- *   - 将来のAnimal.js追加もここで受け入れる
- *
- * ─────────────────────────────────────────────────────
- * フロー：
- *   Entropy計算 → トリガー判定 → Plant/Animal生成
- *   → getEntropyTotal() → Engine集約 → EarthBody反映
- * ─────────────────────────────────────────────────────
+ * 生命圏全体の状態管理（完全版）
  */
 
 import {
@@ -34,345 +16,137 @@ import {
     S_MARGIN_ANIMAL,
 } from './Entropy.js';
 
-import { Plant, selectPlantType }   from '../entities/Plant.js';
-import { Animal, selectAnimalType } from '../entities/Animal.js';
+import { Plant, selectPlantType } from '../entities/Plant.js';
 
-// 冷却期間（ステップ数）
+// ── 定数定義 ──────────────────────────────────────────
 const COOLING_PERIOD   = 180;
-// 同時に存在できる植物の最大数
 const MAX_PLANTS       = 50;
-// 植物population→writeout変換係数（旧Species.jsから継承）
-const WRITEOUT_EFF     = 0.0075;
-// 同時に存在できる動物の最大数
-const MAX_ANIMALS      = 30;
+const WRITEOUT_EFF     = 0.002; // 死による情報還流係数
 
 export class Biosphere {
+    constructor() {
+        this.plants = [];
+        this.animals = []; // 将来用
 
-    constructor(config = {}) {
-        // ── エントロピー状態 ───────────────────────────────
-        this.s_local    = 0;
-        this.s_critical = 0;
-        this.s_margin   = 0;
-        this.saturation = 0;
+        // 状態パラメータ
+        this.phase = 'accumulation'; // accumulation | cooling
+        this.coolingTimer = 0;
+        
+        this.s_local      = 0;
+        this.s_critical   = 0;
+        this.s_margin     = 0;
+        this.saturation   = 0;
+        
+        this.population   = 0;
+        this.biodiversity = 0;
+        this.drive        = 0;
 
-        // ── 生命圏フェーズ ─────────────────────────────────
-        // accumulation | plant_trigger | cooling | plant_stable | animal_ready
-        this.phase = 'accumulation';
-
-        // ── トリガーフラグ ─────────────────────────────────
         this.plantTriggered  = false;
         this.animalTriggered = false;
-
-        // ── 冷却管理 ──────────────────────────────────────
-        this.coolingMode  = false;
-        this.coolingTimer = 0;
-
-        // ── 植物群 ────────────────────────────────────────
-        this.plants = [];   // Plant[]
-
-        // ── 動物群（将来用） ───────────────────────────────
-        this.animals = [];  // Animal[]（Animal.js実装後に使う）
-
-        // ── 統計 ──────────────────────────────────────────
-        this.population   = config.initialPop ?? 0.2; // 旧Species.jsから継承
-        this.drive        = 0;
-        this.biodiversity = 0;
-
-        // ── 設定 ──────────────────────────────────────────
-        this.writeoutEff = config.writeoutEff ?? WRITEOUT_EFF;
     }
 
-    // ── メイン更新 ────────────────────────────────────────
     /**
-     * @param {object} bodySnap    - EarthBody.getSnapshot()
-     * @param {object} climateSnap - Climate.getSnapshot()
-     * @param {number} delta
-     * @returns {object} { entropyDelta, writeout, triggered }
+     * メインアップデート
+     * @returns {Object} Engineに渡す計算結果
      */
-    update(bodySnap, climateSnap, delta) {
-        const { phi, strain } = bodySnap;
-        const env = this._buildEnv(bodySnap, climateSnap);
-
-        // 1. エントロピー計算
-        this.s_local    = calcSLocal(phi, strain);
-        this.s_critical = calcSCritical(strain);
+    update(body, climate, delta) {
+        // 1. エントロピー基本状態の計算（Entropy.jsを使用）
+        this.s_local    = calcSLocal(body.phi, body.strain);
+        this.s_critical = calcSCritical(body.phi);
         this.saturation = calcSaturation(this.s_local, this.s_critical);
 
-        // 2. 植物誕生トリガー
-        let triggered = null;
-        if (!this.plantTriggered && isPlantTrigger(this.s_local, this.s_critical, strain)) {
-            triggered = this._onPlantGenesis(phi, env);
-        }
+        let totalCooling  = 0;
+        let totalWriteout = 0;
 
-        // 3. 冷却期間処理
-        if (this.coolingMode && this.coolingTimer > 0) {
-            this.coolingTimer--;
-            const coolingRatio = this.coolingTimer / COOLING_PERIOD;
-            const cooling = calcCoolingEffect(this.s_local, coolingRatio);
-            this.s_local = Math.max(0, this.s_local - cooling);
-
-            // 冷却後半：植物がエントロピーを少し戻す（根付きの揺り戻し）
-            if (this.coolingTimer < COOLING_PERIOD * 0.7) {
-                this.s_local += 0.006 * phi * delta;
+        // 2. フェーズ管理ロジック
+        if (this.phase === 'accumulation') {
+            // 誕生トリガーチェック
+            if (isPlantTrigger(this.saturation, body.strain) && !this.plantTriggered) {
+                this._genesisPlant();
+                this.plantTriggered = true;
+                this.phase = 'cooling';
+                this.coolingTimer = COOLING_PERIOD;
+            }
+        } else if (this.phase === 'cooling') {
+            this.coolingTimer -= delta * 60; // 60fps想定
+            if (this.coolingTimer <= 0) {
+                this.phase = 'accumulation';
             }
         }
 
-        // 4. 植物群の更新
-        this._updatePlants(env, delta, phi, strain);
-
-        // 4b. 動物群の更新（動物誕生後）
-        if (this.animalTriggered) {
-            this._updateAnimals(env, delta, phi, strain);
-        }
-
-        // 5. S_margin蓄積（デフラグ中）
-        const hasPlant = this.plants.some(p => p.alive);
-        if (hasPlant && this.s_local < this.s_critical) {
-            this.s_margin += calcMarginAccumulation(this.s_critical, this.s_local, delta);
-        }
-
-        // 6. 動物誕生トリガー
-        if (!triggered && !this.animalTriggered && isAnimalTrigger(this.s_margin, hasPlant)) {
-            triggered = this._onAnimalGenesis(phi, env);
-        }
-
-        // 7. フェーズ更新
-        this._updatePhase(hasPlant);
-
-        // 8. 統計更新
-        this._updateStats(phi, strain, delta, hasPlant);
-
-        // 9. Writeout計算（旧Species.jsから継承：死による情報還流）
-        const writeout = this._calcWriteout(phi, delta);
-
-        // 10. エントロピー合計をEngineに返す
-        const entropyDelta = this._calcEntropyTotal(phi, strain);
-
-        return { entropyDelta, writeout, triggered };
-    }
-
-    // ── 植物誕生処理 ──────────────────────────────────────
-    _onPlantGenesis(phi, env) {
-        this.plantTriggered = true;
-
-        // S_local急落（72%）
-        this.s_local = calcPlantGenesisReset(this.s_local);
-
-        // 冷却開始
-        this.coolingMode  = true;
-        this.coolingTimer = COOLING_PERIOD;
-        this.phase        = 'plant_trigger';
-
-        // 最初の植物を生成（環境に応じた種別）
-        this._spawnPlant(env);
-
-        return { type: 'plant' };
-    }
-
-    // ── 動物誕生処理 ──────────────────────────────────────
-    _onAnimalGenesis(phi, env) {
-        this.animalTriggered = true;
-        this.phase = 'animal_ready';
-        this._spawnAnimal(env);
-        return { type: 'animal' };
-    }
-
-    // ── 動物のスポーン ────────────────────────────────────
-    _spawnAnimal(env) {
-        if (this.animals.length >= MAX_ANIMALS) return;
-        const animalType = selectAnimalType(env);
-        this.animals.push(new Animal({ animalType }));
-    }
-
-    // ── 動物群の更新 ──────────────────────────────────────
-    _updateAnimals(env, delta, phi, strain) {
-        const toReproduce = [];
-
-        for (const animal of this.animals) {
-            animal._lastOxygenLevel = env.oxygenLevel ?? 0.01;
-            animal.update(env, delta);
-
-            if (animal.readyToReproduce && this.animals.length < MAX_ANIMALS) {
-                animal.readyToReproduce = false;
-                toReproduce.push(env);
+        // 3. 植物個体の更新
+        this.plants.forEach(plant => {
+            const res = plant.update(climate, body, delta);
+            
+            // 冷却効果の集計（生存中のみ）
+            if (plant.alive) {
+                totalCooling += calcCoolingEffect(plant.level, this.saturation);
             }
-        }
+            
+            // 死による情報の還流（死亡した瞬間のみ）
+            if (plant.justDied) {
+                totalWriteout += (plant.level * WRITEOUT_EFF);
+                plant.justDied = false; // 重複加算防止
+            }
+        });
 
-        // 死んだ動物を除去
-        this.animals = this.animals.filter(a => a.alive || a.age < a.lifespan * 1.05);
+        // 4. 個体リストの掃除（完全に消滅した個体を除去）
+        this.plants = this.plants.filter(p => p.alive || p.age < p.lifespan + 10);
 
-        // 新しい動物を追加
-        for (const e of toReproduce) this._spawnAnimal(e);
+        // 5. 統計の更新
+        this.population = this.plants.filter(p => p.alive).length / MAX_PLANTS;
+        this.biodiversity = new Set(this.plants.map(p => p.type)).size / 5;
+
+        // ──────────────────────────────────────────────────
+        // ✅ 重要：Engine.js が期待する形式で計算結果を返す
+        // ──────────────────────────────────────────────────
+        return {
+            entropyDelta: totalCooling, // 負の値（惑星を冷やす）
+            writeout:     totalWriteout  // 正の値（死の記録をΦに刻む）
+        };
     }
 
-    // ── 植物のスポーン ────────────────────────────────────
-    _spawnPlant(env) {
+    /**
+     * 新しい植物の誕生
+     */
+    _genesisPlant() {
         if (this.plants.length >= MAX_PLANTS) return;
-        const plantType = selectPlantType(env);
-        this.plants.push(new Plant({ plantType }));
+        
+        const type = selectPlantType();
+        const newPlant = new Plant(type);
+        this.plants.push(newPlant);
+        console.log(`[Biosphere] Plant Genesis: ${type}`);
     }
 
-    // ── 植物群の更新 ──────────────────────────────────────
-    _updatePlants(env, delta, phi, strain) {
-        const toSpawn = [];
+    /**
+     * 物理的衝撃（Engineから呼ばれる）
+     */
+    onPhysicalShock(intensity) {
+        console.warn(`[Biosphere] Received Shock: ${intensity.toFixed(2)}`);
+        
+        // 全個体にダメージ
+        this.plants.forEach(p => {
+            if (Math.random() < intensity * 0.5) p.alive = false;
+        });
 
-        for (const plant of this.plants) {
-            plant.update(env, delta);
-
-            // 繁殖チェック
-            if (plant.readyToSpread && this.plants.length < MAX_PLANTS) {
-                plant.readyToSpread = false;
-                toSpawn.push(env);
-            }
-        }
-
-        // 死んだ植物を除去（ただし死体は栄養還元のため少し残す）
-        this.plants = this.plants.filter(p => p.alive || p.age < p.lifespan * 1.1);
-
-        // 新しい植物を追加
-        for (const e of toSpawn) this._spawnPlant(e);
-    }
-
-    // ── エントロピー合計 ──────────────────────────────────
-    _calcEntropyTotal(phi, strain) {
-        const plantEntropy = this.plants.reduce((sum, p) =>
-            sum + p.getEntropyContribution(phi, strain), 0);
-        const animalEntropy = this.animals.reduce((sum, a) =>
-            sum + a.getEntropyContribution(phi, strain), 0);
-        return plantEntropy + animalEntropy;
-    }
-
-    // ── Writeout（死による情報還流） ─────────────────────
-    // 旧Species.jsのcalculateDeathWriteout()を継承
-    _calcWriteout(phi, delta) {
-        if (!this.plantTriggered) return 0;
-        const alivePlants  = this.plants.filter(p => p.alive).length;
-        const plantDensity = alivePlants / MAX_PLANTS;
-        return plantDensity * this.writeoutEff * delta;
-    }
-
-    // ── 統計更新 ──────────────────────────────────────────
-    _updateStats(phi, strain, delta, hasPlant) {
-        const alivePlants = this.plants.filter(p => p.alive).length;
-
-        // population：植物密度に連動
-        if (hasPlant) {
-            this.population = Math.min(1, 0.2 + alivePlants / MAX_PLANTS * 0.8);
-        }
-
-        // biodiversity：植物種の多様性
-        const types = new Set(this.plants.filter(p => p.alive).map(p => p.plantType));
-        this.biodiversity = types.size / 4; // 4種類が最大
-
-        // drive：動物のdriveAccum合計
-        if (this.animalTriggered && this.animals.length > 0) {
-            const totalDrive = this.animals
-                .filter(a => a.alive)
-                .reduce((s, a) => s + a.drive, 0);
-            this.drive = Math.min(1, totalDrive / Math.max(1, this.animals.length));
-        }
-    }
-
-    // ── フェーズ更新 ──────────────────────────────────────
-    _updatePhase(hasPlant) {
-        if (this.animalTriggered) {
-            this.phase = 'animal_ready';
-        } else if (this.coolingMode && this.coolingTimer > 0) {
-            this.phase = 'cooling';
-        } else if (hasPlant && this.s_local < this.s_critical) {
-            this.phase = 'plant_stable';
-        } else if (this.plantTriggered) {
-            this.phase = 'plant_trigger';
-        } else {
+        // 強い衝撃（0.8以上）なら誕生フラグをリセットしてやり直し
+        if (intensity >= 0.8) {
+            this.plantTriggered = false;
             this.phase = 'accumulation';
         }
     }
 
-    // ── 環境オブジェクト構築 ──────────────────────────────
-    _buildEnv(bodySnap, climateSnap) {
-        return {
-            phi:       bodySnap.phi,
-            strain:    bodySnap.strain,
-            temp:      climateSnap.surfaceTemp  ?? 15,
-            stability: climateSnap.stability    ?? 1.0,
-            bgf:       bodySnap.bgf             ?? 19.15,
-        };
-    }
-
-
-    // ── 物理的衝撃を受ける（EarthBodyのStrain解放から）────
     /**
-     * Cascade/minor解放イベント時にEngine.jsから呼ばれる。
-     * 全植物に一斉ストレスを与え、脆弱な個体を死亡させる。
-     *
-     * @param {number} intensity - 衝撃強度（0〜1）
-     *   minor cascade  → 0.3〜0.5
-     *   global cascade → 0.8〜1.0
+     * スナップショット（EngineのgetFullStatus用）
      */
-    onPhysicalShock(intensity) {
-        if (intensity <= 0) return;
-
-        // 全植物にストレスを蓄積
-        // intensityが高いほど多くの個体が死亡する
-        for (const plant of this.plants) {
-            if (!plant.alive) continue;
-
-            // 衝撃で成熟度を強制低下（脆弱化）
-            plant.maturity = Math.max(0, plant.maturity - intensity * 0.4);
-
-            // 高強度（0.7以上）は直接死亡
-            if (intensity >= 0.7 && Math.random() < intensity * 0.6) {
-                plant._die('physical_shock');
-            }
-        }
-
-        // S_localを急上昇（衝撃でエントロピー放出）
-        this.s_local += intensity * 5.0;
-
-        // 冷却モードを強制解除（衝撃でデフラグ中断）
-        if (intensity >= 0.5 && this.coolingMode) {
-            this.coolingMode  = false;
-            this.coolingTimer = 0;
-        }
-
-        // 人口・biodiversity低下
-        this.population   = Math.max(0, this.population   - intensity * 0.3);
-        this.biodiversity = Math.max(0, this.biodiversity - intensity * 0.4);
-
-        // 大域Cascade（intensity≥0.8）は植物誕生フラグをリセット
-        // → 次サイクルで再び過飽和から誕生できる
-        if (intensity >= 0.8) {
-            this.plantTriggered  = false;
-            this.animalTriggered = false;
-            this.s_margin        = 0;
-            this.phase           = 'accumulation';
-        }
-    }
-
-    // ── スナップショット（Engine/UI用） ────────────────────
     getSnapshot() {
-        const alivePlants = this.plants.filter(p => p.alive).length;
         return {
-            phase:          this.phase,
-            population:     +this.population.toFixed(3),
-            drive:          +this.drive.toFixed(4),
-            biodiversity:   +this.biodiversity.toFixed(3),
-            s_local:        +this.s_local.toFixed(4),
-            s_critical:     +this.s_critical.toFixed(4),
-            s_margin:       +this.s_margin.toFixed(3),
-            saturation:     +this.saturation.toFixed(3),
-            plantCount:     alivePlants,
-            animalCount:    this.animals.filter(a => a.alive).length,
-            plantTriggered: this.plantTriggered,
-            animalTriggered:this.animalTriggered,
-            coolingTimer:   this.coolingTimer,
-            // 旧Species互換（Engine.jsが参照）
-            isExtinct:      this.population <= 0,
-            extinctionCause: null,
+            phase:        this.phase,
+            population:   +this.population.toFixed(3),
+            biodiversity: +this.biodiversity.toFixed(3),
+            plantCount:   this.plants.filter(p => p.alive).length,
+            s_local:      +this.s_local.toFixed(4),
+            saturation:   +this.saturation.toFixed(3)
         };
-    }
-
-    reset() {
-        Object.assign(this, new Biosphere());
     }
 }
