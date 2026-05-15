@@ -253,6 +253,56 @@ export class Biosphere {
         };
     }
 
+
+    // ── 物理的衝撃を受ける（EarthBodyのStrain解放から）────
+    /**
+     * Cascade/minor解放イベント時にEngine.jsから呼ばれる。
+     * 全植物に一斉ストレスを与え、脆弱な個体を死亡させる。
+     *
+     * @param {number} intensity - 衝撃強度（0〜1）
+     *   minor cascade  → 0.3〜0.5
+     *   global cascade → 0.8〜1.0
+     */
+    onPhysicalShock(intensity) {
+        if (intensity <= 0) return;
+
+        // 全植物にストレスを蓄積
+        // intensityが高いほど多くの個体が死亡する
+        for (const plant of this.plants) {
+            if (!plant.alive) continue;
+
+            // 衝撃で成熟度を強制低下（脆弱化）
+            plant.maturity = Math.max(0, plant.maturity - intensity * 0.4);
+
+            // 高強度（0.7以上）は直接死亡
+            if (intensity >= 0.7 && Math.random() < intensity * 0.6) {
+                plant._die('physical_shock');
+            }
+        }
+
+        // S_localを急上昇（衝撃でエントロピー放出）
+        this.s_local += intensity * 5.0;
+
+        // 冷却モードを強制解除（衝撃でデフラグ中断）
+        if (intensity >= 0.5 && this.coolingMode) {
+            this.coolingMode  = false;
+            this.coolingTimer = 0;
+        }
+
+        // 人口・biodiversity低下
+        this.population   = Math.max(0, this.population   - intensity * 0.3);
+        this.biodiversity = Math.max(0, this.biodiversity - intensity * 0.4);
+
+        // 大域Cascade（intensity≥0.8）は植物誕生フラグをリセット
+        // → 次サイクルで再び過飽和から誕生できる
+        if (intensity >= 0.8) {
+            this.plantTriggered  = false;
+            this.animalTriggered = false;
+            this.s_margin        = 0;
+            this.phase           = 'accumulation';
+        }
+    }
+
     // ── スナップショット（Engine/UI用） ────────────────────
     getSnapshot() {
         const alivePlants = this.plants.filter(p => p.alive).length;
