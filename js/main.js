@@ -1,5 +1,5 @@
 import { PandoraEngine } from './core/Engine.js';
-const PLANET_EARTH = { name: 'PANDORA', radius: 6371 };
+import { PLANET_EARTH }  from '../config/planets/earth.js';
 
 let engine, visualizer;
 let lastTime = 0;
