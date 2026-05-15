@@ -1,129 +1,163 @@
 /**
  * PANDORA EARTH — js/core/Entropy.js
- * エントロピー管理システム（最終調整版）
+ *
+ * 純粋変換エンジン（状態を持たない）
+ *
+ * 役割：
+ *   生のエントロピー値を bgf・Strain・Φ を考慮して
+ *   「意味のある値」に変換する計算式のみを提供する。
+ *   状態管理は Biosphere.js が担当する。
+ *
+ * 依存：constants.js のみ
+ * 状態：なし（全関数がpure function）
+ *
+ * ─────────────────────────────────────────────────────
+ * 基本式（Pandora Theory）
+ *
+ *   S_local    = B × ln(bgf / |Φ - Φ_c|) × Strain
+ *   S_critical = B × ln(bgf) × (1 / √Strain)
+ *   Saturation = S_local / S_critical
+ *
+ * 植物誕生条件：
+ *   S_local > S_critical && Strain >= 5.0
+ * ─────────────────────────────────────────────────────
  */
 
 import { PANDORA_CONST, PANDORA_DERIVED } from '../constants.js';
 
-const B          = PANDORA_CONST.B;           // 24.0
-const BGF        = PANDORA_CONST.BGF;         // 19.15
-const PHI_C      = PANDORA_DERIVED.PHI_IDEAL; // 5/6 ≈ 0.8333
+// ── 定数 ──────────────────────────────────────────────────
+const B     = PANDORA_CONST.B;           // 24.0（D₄格子定数）
+const BGF   = PANDORA_CONST.BGF;         // 19.15
+const PHI_C = PANDORA_DERIVED.PHI_IDEAL; // 5/6 ≈ 0.8333
 
-const STRAIN_PLANT_THRESHOLD = 5.0;
-const S_CRITICAL_FLOOR       = 0.12;
-const COOLING_PERIOD         = 180;           // 植物根付く期間（ステップ）
+// 各閾値（外部参照用にexport）
+export const STRAIN_PLANT_THRESHOLD  = 5.0;   // 植物誕生Strain閾値
+export const STRAIN_RELEASE_THRESHOLD = 10.0; // Strain解放（Cascade）閾値
+export const S_CRITICAL_FLOOR        = 0.12;  // S_criticalの下限
+export const S_MARGIN_ANIMAL         = 2.2;   // 動物誕生に必要なS_margin
 
-export class EntropySystem {
+// ── 変換関数群（pure functions）─────────────────────────
 
-    constructor() {
-        this.s_local     = 0;      // 現在のエントロピー
-        this.s_critical  = 0;      // 臨界値
-        this.s_margin    = 0;      // 動物誕生用の余裕リソース
-        this.coolingMode = false;
-        this.coolingTimer = 0;
+/**
+ * 局所エントロピーを計算する
+ * S_local = B × ln(bgf / |Φ - Φ_c|) × Strain
+ *
+ * @param {number} phi    - 現在のΦ
+ * @param {number} strain - 現在のStrain
+ * @returns {number} S_local
+ */
+export function calcSLocal(phi, strain) {
+    if (strain <= 0) return 0;
+    const gap = Math.max(Math.abs(phi - PHI_C), 1e-6);
+    const s = B * Math.log(BGF / gap) * strain;
+    return Math.max(0, s);
+}
 
-        this.plantTriggered  = false;
-        this.animalTriggered = false;
-        this.phase = 'accumulation'; // accumulation | plant_trigger | cooling | animal_ready
-    }
+/**
+ * 臨界エントロピーを計算する
+ * S_critical = B × ln(bgf) × (1 / √Strain)
+ *
+ * Strain < 5.0：高い値を保つ（不毛の時代、何も起きない）
+ * Strain >= 5.0：急降下してS_localと交差（クロスオーバー）
+ *
+ * @param {number} strain - 現在のStrain
+ * @returns {number} S_critical
+ */
+export function calcSCritical(strain) {
+    const s = B * Math.log(BGF) * (1 / Math.sqrt(Math.max(strain, 0.5)));
+    return Math.max(s, S_CRITICAL_FLOOR);
+}
 
-    update(phi, strain, delta = 1) {
-        // 1. S_local計算
-        this.s_local = this._calcSLocal(phi, strain);
+/**
+ * 過飽和度（Saturation）を計算する
+ * Saturation = S_local / S_critical
+ * 1.0を超えると植物誕生圏に入る
+ *
+ * @param {number} s_local
+ * @param {number} s_critical
+ * @returns {number} saturation
+ */
+export function calcSaturation(s_local, s_critical) {
+    if (s_critical <= 0) return 0;
+    return s_local / s_critical;
+}
 
-        // 2. S_critical計算
-        this.s_critical = this._calcSCritical(strain);
+/**
+ * 植物誕生条件を判定する
+ *
+ * @param {number} s_local
+ * @param {number} s_critical
+ * @param {number} strain
+ * @returns {boolean}
+ */
+export function isPlantTrigger(s_local, s_critical, strain) {
+    return strain >= STRAIN_PLANT_THRESHOLD && s_local > s_critical;
+}
 
-        // 3. 植物誕生判定
-        if (!this.plantTriggered && this._isPlantTrigger(strain)) {
-            this.plantTriggered = true;
-            this._onPlantGenesis(phi);
-            return { triggered: true, type: 'plant' };
-        }
+/**
+ * 動物誕生条件を判定する
+ *
+ * @param {number} s_margin  - 蓄積された余裕リソース
+ * @param {boolean} hasPlant - 植物が存在するか
+ * @returns {boolean}
+ */
+export function isAnimalTrigger(s_margin, hasPlant) {
+    return hasPlant && s_margin >= S_MARGIN_ANIMAL;
+}
 
-        // 4. 冷却期間（植物根付く期間）
-        if (this.coolingMode && this.coolingTimer > 0) {
-            this.coolingTimer--;
-            this._applyCoolingEffect(phi);
+/**
+ * 外部環境（地殻・気象・海洋など）からの生のエントロピー値を
+ * bgf・Φ・Strainを考慮して「情報場への影響値」に変換する
+ *
+ * 使い方：
+ *   Geosphere.js → raw値を返す
+ *   Entropy.convertRaw(raw, { phi, strain }) → Engine.jsに渡す
+ *
+ * @param {number} raw    - 生のエントロピー値
+ * @param {object} state  - { phi, strain }
+ * @returns {number}      - 変換後の値（Φへの影響量）
+ */
+export function convertRaw(raw, { phi, strain }) {
+    if (raw === 0) return 0;
+    // bgfとの乖離度で増幅（bgf付近では摩擦最小）
+    const bgfFactor = 1 + Math.abs(phi - PHI_C) * strain / BGF;
+    return raw * bgfFactor;
+}
 
-            // 冷却期間中も植物は少しずつエントロピーを排出
-            if (this.coolingTimer < COOLING_PERIOD * 0.7) {
-                this.s_local += 0.006 * phi * delta;
-            }
-        }
+/**
+ * 植物誕生直後のS_local急落値を計算する
+ * 「デフラグ開始の瞬間」= 72%急落
+ *
+ * @param {number} s_local - 誕生直前のS_local
+ * @returns {number}       - 急落後のS_local
+ */
+export function calcPlantGenesisReset(s_local) {
+    return s_local * 0.28;
+}
 
-        // 5. S_margin（余裕）の蓄積
-        if (this.plantTriggered && this.s_local < this.s_critical) {
-            this.s_margin += (this.s_critical - this.s_local) * 0.8 * delta;
-        }
+/**
+ * 植物の冷却効果を計算する（1ステップあたり）
+ * 冷却期間中、徐々に弱まる効果
+ *
+ * @param {number} s_local       - 現在のS_local
+ * @param {number} coolingRatio  - 残り冷却期間の割合（0〜1）
+ * @returns {number}             - 減少量（delta S）
+ */
+export function calcCoolingEffect(s_local, coolingRatio) {
+    const rate = 0.018 * coolingRatio;
+    return s_local * rate;
+}
 
-        // 6. 動物誕生判定
-        if (this.plantTriggered && !this.animalTriggered && 
-            this.s_margin >= 2.2) {   // 閾値は調整可能
-            this.animalTriggered = true;
-            this.phase = 'animal_ready';
-            return { triggered: true, type: 'animal' };
-        }
-
-        // フェーズ更新
-        this._updatePhase();
-
-        return { triggered: false, type: null };
-    }
-
-    _calcSLocal(phi, strain) {
-        if (strain <= 0) return 0;
-        const gap = Math.max(Math.abs(phi - PHI_C), 1e-6);
-        return B * Math.log(BGF / gap) * strain;
-    }
-
-    _calcSCritical(strain) {
-        const safeStrain = Math.max(strain, 0.5);
-        let s = B * Math.log(BGF) * (1 / Math.sqrt(safeStrain));
-        return Math.max(s, S_CRITICAL_FLOOR);
-    }
-
-    _isPlantTrigger(strain) {
-        return strain >= STRAIN_PLANT_THRESHOLD && this.s_local > this.s_critical;
-    }
-
-    _onPlantGenesis(phi) {
-        this.s_local *= 0.28;           // 72%急落（情報整理効果）
-        this.coolingMode = true;
-        this.coolingTimer = COOLING_PERIOD;
-        this.phase = 'plant_trigger';
-    }
-
-    _applyCoolingEffect(phi) {
-        // 徐々に弱まる冷却効果
-        const rate = 0.018 * (this.coolingTimer / COOLING_PERIOD);
-        this.s_local -= rate * this.s_local;
-    }
-
-    _updatePhase() {
-        if (this.animalTriggered) {
-            this.phase = 'animal_ready';
-        } else if (this.coolingMode && this.coolingTimer > 0) {
-            this.phase = 'cooling';
-        } else if (this.plantTriggered) {
-            this.phase = 'plant_stable';
-        }
-    }
-
-    getSnapshot() {
-        return {
-            s_local:        +this.s_local.toFixed(4),
-            s_critical:     +this.s_critical.toFixed(4),
-            s_margin:       +this.s_margin.toFixed(3),
-            phase:          this.phase,
-            plantTriggered: this.plantTriggered,
-            animalTriggered:this.animalTriggered,
-            saturation:     this.s_critical > 0 ? 
-                           +(this.s_local / this.s_critical).toFixed(3) : 0
-        };
-    }
-
-    reset() {
-        Object.assign(this, new EntropySystem());
-    }
+/**
+ * 植物安定期のS_margin蓄積量を計算する
+ *
+ * @param {number} s_critical
+ * @param {number} s_local
+ * @param {number} delta
+ * @returns {number} - 蓄積量
+ */
+export function calcMarginAccumulation(s_critical, s_local, delta) {
+    const margin = s_critical - s_local;
+    if (margin <= 0) return 0;
+    return margin * 0.8 * delta;
 }
