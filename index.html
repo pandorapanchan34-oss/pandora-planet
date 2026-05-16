@@ -2,66 +2,94 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>PANDORA PLANET NODE</title>
     <link rel="stylesheet" href="./assets/css/style.css">
 </head>
 <body>
-    <div class="container">
+    <div class="app">
 
-        <!-- canvas: style.css の canvas#sphere に合わせる -->
-        <canvas id="sphere"></canvas>
+        <!-- 上部UIパネル -->
+        <div class="top-panel">
 
-        <!-- 左パネル: .ui-panel + .panel-left -->
-        <div class="ui-panel panel-left">
-
-            <!-- .app-header に変更（style.cssに対応するクラス） -->
-            <header class="app-header">
-                <h1>PANDORA <span>PLANET NODE</span></h1>
-                <div class="subtitle">
-                    bgf ≈ <span id="year">-800Ma</span> | Aetheria
+            <!-- ヘッダー -->
+            <div class="header-row">
+                <div class="header-left">
+                    <span class="logo">PANDORA</span>
+                    <span class="sub">PLANET NODE</span>
                 </div>
-            </header>
+                <div class="header-right">
+                    <span class="phase-badge" id="phase">Pre-Biotic</span>
+                </div>
+            </div>
 
-            <div class="stats">
-                <div class="stat">
-                    <span class="label">PHASE</span>
-                    <span id="phase" class="value">Pre-Biotic</span>
+            <!-- ステータスグリッド -->
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="label">Φ</span>
+                    <span id="phi" class="value">0.9500</span>
                 </div>
-                <div class="stat">
-                    <span class="label">Φ DENSITY</span>
-                    <span id="phi" class="value">0.0000</span>
-                </div>
-                <div class="stat">
-                    <span class="label">bgf TEMP</span>
+                <div class="stat-item">
+                    <span class="label">TEMP</span>
                     <span id="temp" class="value">--°C</span>
                 </div>
-                <div class="stat">
+                <div class="stat-item">
                     <span class="label">STRAIN</span>
                     <span id="strain" class="value">0.00</span>
                 </div>
-                <div class="stat">
-                    <span class="label">STABILITY</span>
+                <div class="stat-item">
+                    <span class="label">STAB</span>
                     <span id="stability" class="value">--%</span>
                 </div>
-                <div class="stat">
-                    <span class="label">POPULATION</span>
+                <div class="stat-item">
+                    <span class="label">POP</span>
                     <span id="pop" class="value">--%</span>
                 </div>
-                <div class="stat">
+                <div class="stat-item">
                     <span class="label">DRIVE</span>
                     <span id="drive" class="value">0.0000</span>
                 </div>
             </div>
 
-            <!-- アラートボックス -->
+            <!-- アラート -->
             <div id="alert-box" class="alert-box"></div>
 
-            <button id="runBtn" class="observe-btn">OBSERVE SINGULARITY</button>
+            <!-- 年代表示 + スライダー -->
+            <div class="era-row">
+                <span id="eraLabel" class="era-label">-800Ma</span>
+                <input type="range" id="eraSlider"
+                    min="-800" max="0" step="1" value="-800"
+                    class="era-slider" />
+                <span id="year" class="era-now">NOW</span>
+            </div>
 
-            <!-- ログ: style.css の #eventLog に合わせてIDを統一 -->
-            <div id="eventLog" class="log"></div>
+            <!-- 年代ジャンプボタン -->
+            <div class="era-jumps">
+                <button class="era-btn active" data-era="-800">-800</button>
+                <button class="era-btn" data-era="-600">-600</button>
+                <button class="era-btn" data-era="-400">-400</button>
+                <button class="era-btn" data-era="-200">-200</button>
+                <button class="era-btn" data-era="0">0Ma</button>
+            </div>
+
+            <!-- コントロール行 -->
+            <div class="control-row">
+                <!-- 速度ボタン -->
+                <div class="speed-btns">
+                    <button class="speed-btn active" data-speed="1">×1</button>
+                    <button class="speed-btn" data-speed="5">×5</button>
+                    <button class="speed-btn" data-speed="10">×10</button>
+                    <button class="speed-btn" data-speed="50">×50</button>
+                    <button class="speed-btn" data-speed="100">×100</button>
+                </div>
+                <!-- 観測ボタン -->
+                <button id="runBtn" class="run-btn">▶ OBSERVE</button>
+            </div>
+
         </div>
+
+        <!-- 球体Canvas（下半分） -->
+        <canvas id="sphere"></canvas>
 
     </div>
 
