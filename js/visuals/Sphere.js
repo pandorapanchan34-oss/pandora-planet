@@ -31,10 +31,9 @@ export class SphereVisualizer {
   }
 
   resize() {
-    // parentElement経由だとfixed/absolute構成で0を返すことがある
-    // window.innerWidth/Height を直接使うのが確実
-    this.canvas.width  = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    // CSSでflex: 1が効いてるのでclientWidth/Heightが正しいサイズを返す
+    this.canvas.width  = this.canvas.clientWidth  || window.innerWidth;
+    this.canvas.height = this.canvas.clientHeight || window.innerHeight;
   }
 
   draw(snap, time) {
