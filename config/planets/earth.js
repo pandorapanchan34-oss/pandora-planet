@@ -50,7 +50,7 @@ export const PLANET_EARTH = {
         writeoutEff: 0.0075,
     },
 
-    yearScale: 1_000,          // 1秒あたりの年数
+    yearScale: 1_000_000,      // 1秒あたり1Ma
 };
 
 /**
@@ -76,7 +76,7 @@ export const PLANET_MARS = {
     initialOceanTemp: -10.0,
     initialPH: 7.0,
     species: { initialPop: 0.0, writeoutEff: 0.001 },
-    yearScale: 1_000,
+    yearScale: 1_000_000,
 };
 
 /**
@@ -101,5 +101,5 @@ export const PLANET_OCEAN = {
     initialOceanTemp: 30.0,
     initialPH: 8.2,
     species: { initialPop: 0.0, writeoutEff: 0.01 },
-    yearScale: 1_000,
+    yearScale: 1_000_000,
 };
