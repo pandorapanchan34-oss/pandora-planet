@@ -3,9 +3,11 @@ import { PLANET_EARTH }  from '../config/planets/earth.js';
 
 let engine, visualizer;
 let lastTime = 0;
+// スピード倍率の初期値
+let timeScale = 1.0; 
 
 /**
- * ログの更新：惑星史のイベントを刻む
+ * ログの更新
  */
 window.addLog = function(msg, level = 'info') {
     const logEl = document.getElementById('log');
@@ -22,10 +24,9 @@ window.addLog = function(msg, level = 'info') {
 };
 
 /**
- * UIの同期：nullガード付きで安全に更新
+ * UIの同期
  */
 function setEl(id, value) {
-    // ✅ FIX③: 存在しないIDへのアクセスでTypeErrorが出てループが死ぬのを防ぐ
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
@@ -39,6 +40,8 @@ function updateUI(status) {
     setEl('stability', (status.climate.stability * 100).toFixed(0) + '%');
     setEl('pop',       (status.species.population * 100).toFixed(1) + '%');
     setEl('drive',     status.species.drive.toFixed(4));
+    // UIに現在の倍率を表示する場合（HTMLにid="currentSpeed"がある前提）
+    setEl('currentSpeed', timeScale.toFixed(1) + 'x');
 
     const alertBox = document.getElementById('alert-box');
     if (alertBox) {
@@ -54,22 +57,18 @@ function updateUI(status) {
 
 /**
  * メインループ
- * ✅ FIX①: Engineの_loop()は使わず、ここで一元管理する
- * ✅ FIX④: deltaをミリ秒→秒に変換してEngineと単位を合わせる
  */
 function loop(now) {
     if (!lastTime) lastTime = now;
-    // ミリ秒→秒、スパイク対策で0.1秒上限
-    const delta = Math.min((now - lastTime) / 1000, 0.1);
+    // 経過時間に倍率(timeScale)を掛ける
+    const delta = Math.min((now - lastTime) / 1000, 0.1) * timeScale;
     lastTime = now;
 
-    // engineがactiveな時だけupdate（Engine内部のループは使わない）
     if (engine && engine.active) {
         engine.update(delta);
     }
 
     const status = engine.getFullStatus();
-
     if (visualizer) visualizer.draw(status, now);
     updateUI(status);
 
@@ -88,29 +87,35 @@ function loop(now) {
 document.addEventListener('DOMContentLoaded', async () => {
     engine = new PandoraEngine(PLANET_EARTH);
 
-    // ✅ FIX②: canvas IDを 'sphere' に統一（index.htmlの<canvas id="sphere">と一致）
     const { SphereVisualizer } = await import('./visuals/Sphere.js');
     visualizer = new SphereVisualizer('sphere');
 
     window.addLog(`PLANET NODE [${PLANET_EARTH.name}] CONNECTED.`);
 
+    // 実行・停止ボタン
     const runBtn = document.getElementById('runBtn');
     if (runBtn) {
         runBtn.addEventListener('click', () => {
-            if (!engine.active) {
-                // ✅ FIX①: engine.start()はEngine内部の_loop()を起動するが、
-                // ここではactive フラグだけ立てる形にしたい。
-                // Engine.start()が_loop()を呼ぶ実装のままなら、
-                // Engine側の_loop()内のupdateを無効化する必要がある。
-                // → Engine_v2.jsの修正コメント参照（activeフラグのみセット）
-                engine.active = true;
-                runBtn.textContent = "FREEZE FLOW";
-                runBtn.classList.add('active');
-            } else {
-                engine.active = false;
-                runBtn.textContent = "OBSERVE SINGULARITY";
-                runBtn.classList.remove('active');
-            }
+            engine.active = !engine.active;
+            runBtn.textContent = engine.active ? "FREEZE FLOW" : "OBSERVE SINGULARITY";
+            runBtn.classList.toggle('active', engine.active);
+        });
+    }
+
+    // ✅ スピード調整ボタンの追加例（HTMLにid="speedUp", "speedDown"がある場合）
+    const speedUp = document.getElementById('speedUp');
+    const speedDown = document.getElementById('speedDown');
+    
+    if (speedUp) {
+        speedUp.addEventListener('click', () => {
+            timeScale = Math.min(timeScale + 0.5, 10.0); // 最大10倍
+            window.addLog(`TIME SCALE: ${timeScale.toFixed(1)}x`, 'info');
+        });
+    }
+    if (speedDown) {
+        speedDown.addEventListener('click', () => {
+            timeScale = Math.max(timeScale - 0.5, 0.5); // 最小0.5倍
+            window.addLog(`TIME SCALE: ${timeScale.toFixed(1)}x`, 'info');
         });
     }
 
