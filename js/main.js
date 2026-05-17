@@ -121,3 +121,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     requestAnimationFrame(loop);
 });
+// スピード倍率ボタンの制御
+const speedButtons = {
+    'btn-1x': 1,
+    'btn-50x': 50,
+    'btn-100x': 100,
+    'btn-1k': 1000,
+    'btn-10k': 10000
+};
+
+Object.keys(speedButtons).forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+        btn.addEventListener('click', () => {
+            // 倍率を更新
+            timeScale = speedButtons[id];
+            
+            // 全ボタンのactiveクラスを外して、押したボタンだけつける（見た目の変化）
+            Object.keys(speedButtons).forEach(key => {
+                document.getElementById(key)?.classList.remove('active');
+            });
+            btn.classList.add('active');
+            
+            window.addLog(`TIME ACCELERATED: ${timeScale}x`);
+        });
+    }
+});
+
