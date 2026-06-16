@@ -67,16 +67,19 @@ export class Biosphere {
         let totalCooling  = 0;
         let totalWriteout = 0;
 
-        // 2. フェーズ管理ロジック
-        if (this.phase === 'accumulation') {
-            // 誕生トリガーチェック
-            if (isPlantTrigger(this.s_local, this.s_critical, body.strain) && !this.plantTriggered) {
-                // ✅ これで安全に env を渡せる！
-                this._genesisPlant(env);
-                this.plantTriggered = true;
-                this.phase = 'cooling';
-                this.coolingTimer = COOLING_PERIOD;
-            }
+        // 🟢 Biosphere.js の 46行目付近、フェーズ管理ロジックを以下にリファクタリング（上書き）
+if (this.phase === 'accumulation') {
+    // 誕生条件を満たしており、かつ植物がまだ絶滅している（または未誕生）なら受肉！
+    if (isPlantTrigger(this.s_local, this.s_critical, body.strain)) {
+        if (this.plants.length === 0) {
+            this._genesisPlant(env);
+            this.plantTriggered = true;
+            this._log?.('EVOLUTION', '最初の植物ゲノムが地表に受肉しました。', 'warn'); // ログ用
+        }
+        this.phase = 'cooling';
+        this.coolingTimer = COOLING_PERIOD;
+    }
+}
         } else if (this.phase === 'cooling') {
             // ✅ FIX②: 1万倍速の巨大な delta が入ってきても、タイマーがマイナスに吹き飛んで無限ループ化するのを防ぐ
             this.coolingTimer -= delta * 60; // 60fps想定
