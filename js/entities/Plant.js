@@ -58,11 +58,18 @@ export class Plant extends Individual {
 
     _calcStress(env) {
         const { temp = 15, bgf = BGF, stability = 1.0, strain = 0 } = env;
+
         const bgfFriction    = Math.abs(temp - bgf) / bgf;
-        const frictionMitigation = this.plantType === 'algae' ? 0.2 : 1.0;
+        // 🌟 FIX: 70℃の摩擦ダメージを徹底的に無効化（0.2 -> 0.05へ）
+        const frictionMitigation = this.plantType === 'algae' ? 0.05 : 1.0;
         const frictionStress = Math.pow(bgfFriction, 1.8) * 1.6 * frictionMitigation;
+
         const strainStress = Math.max(0, (strain - this.strainTolerance) / (10 - this.strainTolerance));
-        const stabilityStress = Math.max(0, 1 - stability) * 0.4;
+
+        // 🌟 FIX: STAB 0% (DISCHARGE BLOCKED) の絶望でも耐えられるよう緩和
+        const stabMitigation = this.plantType === 'algae' ? 0.2 : 1.0;
+        const stabilityStress = Math.max(0, 1 - stability) * 0.4 * stabMitigation;
+
         return Math.min(1.0, frictionStress + strainStress * 0.8 + stabilityStress);
     }
 
