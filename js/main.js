@@ -63,15 +63,12 @@ function updateFortressUI(fortresses) {
     const container = document.getElementById('fortress-list');
     if (!container || !fortresses) return;
 
-    // パフォーマンス維持のため、1万倍速時は差分テキスト更新またはフラグメント制御
-    // ここではミニマルかつサイバー感のあるリストを動的生成
     container.innerHTML = '';
     
     fortresses.forEach(fort => {
         const fortEl = document.createElement('div');
         fortEl.className = `fortress-node-ui ${fort.status.toLowerCase()}`;
         
-        // 防御率に応じたネオンカラーの動的変更（50%未満で赤点滅など）
         const alertClass = fort.defenseRate < 50.0 ? 'critical-pulse' : '';
         
         fortEl.innerHTML = `
@@ -89,11 +86,10 @@ function updateFortressUI(fortresses) {
 }
 
 /**
- * メインループ
+ * メメインループ
  */
 function loop(now) {
     if (!lastTime) lastTime = now;
-    // 経過時間に倍率(timeScale)を掛ける
     const delta = Math.min((now - lastTime) / 1000, 0.1) * timeScale;
     lastTime = now;
 
@@ -123,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { SphereVisualizer } = await import('./visuals/Sphere.js');
     visualizer = new SphereVisualizer('sphere');
 
-    window.addLog(`PLANET NODE [${PLANET_EARTH.name}] CONNECTED.`);
+    window.addLog('PLANET NODE CONNECTED.');
 
     // 実行・停止ボタン
     const runBtn = document.getElementById('runBtn');
@@ -135,7 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // スピード調整ボタン
+    // スピード調整ボタン（手動微調整用）
     const speedUp = document.getElementById('speedUp');
     const speedDown = document.getElementById('speedDown');
     
@@ -152,38 +148,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // スピード倍率ボタンの制御（1x 〜 10k）
-    const speedButtons = {
-        'btn-1x': 1,
-        'btn-50x': 50,
-        'btn-100x': 100,
-        'btn-1k': 1000,
-        'btn-10k': 10000
-    };
+    // ==================================================================
+    // ⚡ スピード倍率ボタンの制御（data-speed属性ハック版）
+    // ==================================================================
+    const domSpeedButtons = document.querySelectorAll('.speed-btn');
 
-   // ==================================================================
-// ⚡ スピード倍率ボタンの制御（名前衝突回避 ＆ data-speed属性ハック版）
-// ==================================================================
-const domSpeedButtons = document.querySelectorAll('.speed-btn');
-
-domSpeedButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-        // HTMLの data-speed 属性から数値をマウント
-        const speedValue = parseFloat(btn.getAttribute('data-speed'));
-        
-        if (!isNaN(speedValue)) {
-            timeScale = speedValue;
+    domSpeedButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const speedValue = parseFloat(btn.getAttribute('data-speed'));
             
-            // 全ての速度ボタンから active クラスをパージ
-            domSpeedButtons.forEach(b => b.classList.remove('active'));
-            
-            // 押されたボタンにのみ active の光を灯す
-            btn.classList.add('active');
-            
-            window.addLog(`TIME ACCELERATED: ${timeScale}x`, 'warn');
-        }
+            if (!isNaN(speedValue)) {
+                timeScale = speedValue;
+                
+                domSpeedButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                window.addLog(`TIME ACCELERATED: ${timeScale}x`, 'warn');
+            }
+        });
     });
-});
 
     requestAnimationFrame(loop);
 });
