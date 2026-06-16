@@ -161,19 +161,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         'btn-10k': 10000
     };
 
-    Object.keys(speedButtons).forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                timeScale = speedButtons[id];
-                Object.keys(speedButtons).forEach(key => {
-                    document.getElementById(key)?.classList.remove('active');
-                });
-                btn.classList.add('active');
-                window.addLog(`TIME ACCELERATED: ${timeScale}x`);
-            });
+    // ==================================================================
+// ⚡ スピード倍率ボタンの制御（data-speed属性ハック版）
+// ==================================================================
+const speedButtons = document.querySelectorAll('.speed-btn');
+
+speedButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        // HTMLの data-speed="10000" といった文字列を数値に相転移
+        const speedValue = parseFloat(btn.getAttribute('data-speed'));
+        
+        if (!isNaN(speedValue)) {
+            timeScale = speedValue;
+            
+            // 全ての速度ボタンから active クラスをパージ
+            speedButtons.forEach(b => b.classList.remove('active'));
+            
+            // 押されたボタンにのみ active の光を灯す
+            btn.classList.add('active');
+            
+            window.addLog(`TIME ACCELERATED: ${timeScale}x`, 'warn');
         }
     });
+});
 
     requestAnimationFrame(loop);
 });
