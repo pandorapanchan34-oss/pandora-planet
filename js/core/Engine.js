@@ -23,7 +23,9 @@ export class PandoraEngine {
     };
 
     this.eventLog   = [];
-    this._yearScale = 1000;
+    
+    // ✅ FIX: earth.js の定義（1_000_000）を正しくマウント。なければ1Ma
+    this._yearScale = planetConfig.yearScale ?? 1_000_000;
 
     this._initGlobalListeners();
 
@@ -49,14 +51,22 @@ export class PandoraEngine {
   update(delta) {
     if (!this.active) return;
 
+    // ✅ 全てのサブシステム（物理・気候・生命）に共通の加速時間軸（delta）を流し込む
     this.time       += delta;
+    
+    // 年代の進行も yearScale（1Ma）× delta で完全動相同期
     this.state.year += this._yearScale * delta;
+
+    // 🛑 0Ma（現代 / 臨界点）に達したら時間を強制停止して Singularity 観測モードへ
+    if (this.state.year >= 0) {
+      this.state.year = 0;
+    }
 
     const oldStrain = this.body.strain;
     const bodySnap  = this.body.getSnapshot();
     const climSnap  = this.climate.getSnapshot();
 
-    // 🌿 Biosphere更新 → 冷却量・還流を受け取る
+    // 🌿 Biosphere更新
     const bioResult = this.biosphere.update(bodySnap, climSnap, delta);
 
     if (bioResult) {
@@ -66,6 +76,7 @@ export class PandoraEngine {
       }
     }
 
+    // ✅ 物理と気候システムにも、timeScale倍された delta を正確に伝播
     this.body.update(delta);
 
     // ⚡ Strain解放 → 物理衝撃
@@ -75,7 +86,7 @@ export class PandoraEngine {
       this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
     }
 
-    // ✅ climate.update()にbiosnapshotを渡す
+    // ✅ 気候システムへの同期
     this.climate.update(
       this.body.getSnapshot(),
       this.biosphere.getSnapshot(),
@@ -98,7 +109,6 @@ export class PandoraEngine {
     const temp = climateSnapshot.surfaceTemp;
 
     this.fortresses.forEach(fort => {
-      // 例: 地表温度が40.0°Cを超えると、冷却限界によって防御率が徐々に減衰する
       if (temp > 40.0) {
         const decay = (temp - 40.0) * fort.climateSensitivity * delta;
         const oldRate = fort.defenseRate;
@@ -109,7 +119,6 @@ export class PandoraEngine {
           this._log('CYBER_ALERT', `要塞 ${fort.name} が過熱により防壁機能不全(50%未満)`, 'warn');
         }
       } else if (temp < 10.0) {
-        // 逆に寒冷期は超伝導・冷却効率アップにより防御率が自動回復
         fort.defenseRate = Math.min(100.0, fort.defenseRate + (10.0 - temp) * 0.01 * delta);
         fort.status = 'STABLE_COOL';
       } else {
@@ -122,7 +131,6 @@ export class PandoraEngine {
     const bio = this.biosphere.getSnapshot();
     let next  = 'Pre-Biotic';
 
-    // 🌟 情報密度が極限まで高まり、生命圏が完成した先、歴史は特異点（Singularity）へ相転移する
     if      (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.30) next = 'Singularity';
     else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.20) next = 'Sapient';
     else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.10) next = 'Complex';
@@ -162,7 +170,7 @@ export class PandoraEngine {
         isExtinct:    bio.isExtinct,
       },
       biosphere: bio,
-      fortresses: this.fortresses, // 🌟 UI層（main.js）が要塞の値を読み込めるようにエクスポート
+      fortresses: this.fortresses,
       active:  this.active,
       log:     [...this.eventLog].reverse(),
     };
