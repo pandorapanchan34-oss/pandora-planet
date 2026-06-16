@@ -5,7 +5,7 @@ import { ClimateSystem }   from '../environment/Climate.js';
 import { Atmosphere }      from '../environment/Atmosphere.js';
 import { Geosphere }       from '../environment/Geosphere.js';
 import { Hydrosphere }     from '../environment/Hydrosphere.js';
-// 🌟 生命起源システム（OriginManager）を正式マウント！
+// 🌟 生命起源システムを正式マウント！
 import { OriginManager }   from '../origins/OriginManager.js';
 import { Events, EVENT, HistoryManager } from './Events.js';
 
@@ -15,20 +15,18 @@ export class PandoraEngine {
     this.active = false;
     this.time   = 0;
 
-    // ── 惑星のコア物理・生命圏 ──
     this.body      = new EarthBody(planetConfig);
     this.biosphere = new Biosphere();
 
-    // ── 環境の四圏システム ──
+    // ── 🌟 環境の四圏システムを正式受肉 ──
     this.atmosphere  = new Atmosphere(planetConfig);
     this.geosphere   = new Geosphere(planetConfig);
     this.hydrosphere = new Hydrosphere(planetConfig);
     this.climate     = new ClimateSystem(planetConfig);
 
-    // ── 🌟【新受肉】生命起源・多点発生マネージャー ──
+    // ── 🌟 生命起源マネージャーを正式マウント ──
     this.originManager = new OriginManager(planetConfig);
 
-    // コロシアム要塞群のデータレイヤーをマウント
     this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
 
     this.state = {
@@ -83,7 +81,6 @@ export class PandoraEngine {
 
     const oldStrain = this.body.strain;
     
-    // 現在の各サブシステムのスナップショットをラスタライズ
     let bodySnap = this.body.getSnapshot();
     let climSnap = this.climate.getSnapshot();
     let bioSnap  = this.biosphere.getSnapshot();
@@ -95,11 +92,10 @@ export class PandoraEngine {
     this.hydrosphere.update(bodySnap, { co2Level: this.atmosphere.co2Level }, climSnap, delta);
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
     
-    // 新鮮な大気・地殻スナップショットの再スキャン
     atmoSnap = this.atmosphere.getSnapshot();
     geoSnap  = this.geosphere.getSnapshot();
 
-    // 2️⃣ 🌟【新マウント】生命起源プレーンの同期 ＆ 誕生イベントの検知
+    // 2️⃣ 🌟 生命起源プレーンの同期 ＆ 誕生イベントの検知
     const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
     if (originEvent) {
       this._onOriginEvent(originEvent);
@@ -118,17 +114,15 @@ export class PandoraEngine {
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
-      // 大気・地殻・海洋が convertRaw したエントロピーの総和
       const envContribution = this.atmosphere.getEntropyContribution() 
                             + this.geosphere.getEntropyContribution() 
                             + this.hydrosphere.getEntropyContribution();
 
-      // 🌟 熱水噴出孔群が生成する「局所的な負エントロピー」も合算して還流！
+      // 🌟 熱水噴出孔群が生成する「局所負エントロピー」も合算して還流
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
       this.body.setPhi(this.body.phi + bioResult.writeout);
       
-      // 全エントロピーデルタ（冷却 - 負荷 + 起源点デフラグ）をコアにインジェクション
       const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy;
       if (finalEntropyDelta !== 0) {
         this.body.applyEntropy(finalEntropyDelta);
@@ -139,7 +133,6 @@ export class PandoraEngine {
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    // ⚡ 地殻ひずみ解放（物理衝撃）の伝播
     const strainRelease = oldStrain - this.body.strain;
     if (strainRelease > 0.1) {
       this.biosphere.onPhysicalShock(strainRelease);
@@ -156,13 +149,8 @@ export class PandoraEngine {
     this._updatePhase(this.body.phi);
   }
 
-  /**
-   * 🌟【新回路】熱水噴出孔や大気雷から起源イベントを受け取った瞬間の、時空干渉処理
-   */
   _onOriginEvent(event) {
     this._log('GENESIS_CORE', `[${event.source.toUpperCase()}] ${event.message}`, 'warn');
-    
-    // 最初の生命誕生（first_genesis）を検知した場合、生命圏のトリガーを強制点火！
     if (event.type === 'first_genesis') {
       this.biosphere.plantTriggered = true; 
       Events.emit(EVENT.PLANT_BORN, { source: event.source });
@@ -181,4 +169,61 @@ export class PandoraEngine {
         fort.defenseRate = Math.min(100.0, fort.defenseRate + (10.0 - temp) * 0.01 * delta);
         fort.status = 'STABLE_COOL';
       } else {
-        fort.status
+        fort.status = 'STANDBY';
+      }
+    });
+  }
+
+  _updatePhase(phi) {
+    const bio = this.biosphere.getSnapshot();
+    let next  = 'Pre-Biotic';
+
+    if      (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.30) next = 'Singularity';
+    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.20) next = 'Sapient';
+    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.10) next = 'Complex';
+    else if (bio.animalTriggered)                                          next = 'Multicellular';
+    else if (bio.plantTriggered  && phi > PANDORA_CONST.PHI_IDEAL)        next = 'Cambrian';
+    else if (bio.plantTriggered)                                           next = 'Plant-Era';
+    else                                                                   next = 'Pre-Biotic';
+
+    if (next !== this.state.phase) {
+      this.state.phase = next;
+      this._log('PHASE', `Enter ${next}`, 'phase');
+      Events.emit(EVENT.PHASE_CHANGED, { to: next });
+    }
+  }
+
+  _log(type, message, level = 'info') {
+    this.eventLog.push({
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      type, message, level,
+    });
+    if (this.eventLog.length > 100) this.eventLog.shift();
+  }
+
+  getFullStatus() {
+    const bio = this.biosphere.getSnapshot();
+    return {
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      phase:   this.state.phase,
+      body:    this.body.getSnapshot(),
+      climate: this.climate.getSnapshot(),
+      atmosphere: this.atmosphere.getSnapshot(),
+      geosphere:  this.geosphere.getSnapshot(),
+      hydrosphere: this.hydrosphere.getSnapshot(),
+      origins:     this.originManager.getSnapshot(), // UI同期用
+      species: {
+        population:   bio.population,
+        drive:        bio.drive,
+        biodiversity: bio.biodiversity,
+        isExtinct:    bio.isExtinct,
+      },
+      biosphere: bio,
+      fortresses: this.fortresses,
+      active:  this.active,
+      log:     [...this.eventLog].reverse(),
+    };
+  }
+}
