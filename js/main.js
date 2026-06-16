@@ -22,6 +22,15 @@ window.addLog = function(msg, level = 'info') {
     }
 };
 
+// main.js の初期化部分に追加
+Events.on(EVENT.PHASE_CHANGED, (payload) => {
+    const topPanel = document.querySelector('.top-panel');
+    if (payload.to === 'Singularity') {
+        topPanel.classList.add('singularity');
+        window.addLog("SYSTEM_SYNC: 特異点同期モードへ移行しました。", 'critical');
+    }
+});
+
 /**
  * UIの同期
  */
