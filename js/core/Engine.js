@@ -71,7 +71,7 @@ export class PandoraEngine {
 
     this.time       += delta;
     this.state.year += this._yearScale * delta;
-    if (this.state.year >= 0) this.state.year = 0;
+    
 
     const oldStrain = this.body.strain;
     let bodySnap    = this.body.getSnapshot();
