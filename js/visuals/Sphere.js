@@ -76,18 +76,25 @@ export class SphereVisualizer {
       ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.12, r * 0.62, rot, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // 4. 惑星コア（地表・大陸レイヤー）
-    const pulse   = 1.0 + Math.sin(time * 0.01) * (body.strain / 20);
+    // 4. コア
+    // もし strain が異常値になった場合のためのフォールバック処理
+    const safeStrain = (isNaN(body.strain) || !isFinite(body.strain)) ? 0 : body.strain;
+    const pulse   = 1.0 + Math.sin(time * 0.01) * (safeStrain / 20);
     
-    // 🌟 生命誕生（plantTriggered）の有無でベースのコア色を動的制御
-    let coreHue = 200; // 初期デッドブルー
+    let coreHue = 200; 
     if (biosphere && biosphere.plantTriggered) {
-      coreHue = phase === 'Singularity' ? 90 : phase === 'Sapient' ? 320 : phase === 'Complex' ? 40 : 140; // 140 = カンブリア生命エメラルド
+      coreHue = phase === 'Singularity' ? 90 : phase === 'Sapient' ? 320 : phase === 'Complex' ? 40 : 140;
     }
 
     const grad    = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     grad.addColorStop(0,            `hsla(${coreHue},100%,85%,1)`);
-    grad.addColorStop(0.15 * pulse, `hsla(${coreHue},80%,45%,0.9)`);
+    
+    // ✅ FIX: 0〜1の範囲に収め、かつ finite でない場合は 0.15 にフォールバックする絶対セーフティ
+    let offset = 0.15 * pulse;
+    if (isNaN(offset) || !isFinite(offset) || offset < 0 || offset > 1) {
+      offset = 0.15;
+    }
+    grad.addColorStop(offset, `hsla(${coreHue},80%,45%,0.9)`);
     
     // 🌟 植物（POP）が広がるにつれ、地球の裏側に「深緑の大陸相関図」が侵食して浮かび上がる
     if (species.population > 0) {
