@@ -103,14 +103,17 @@ export class Plant extends Individual {
         this.nutrientReleased = false; // NutrientCycle.jsがtrueにする
     }
 
-    // ── 光合成効率（bgf摩擦ベース）───────────────────────
     /**
-     * bgf=19.15 に近いほど摩擦が小さく、光合成効率が高い。
-     * bgfFriction が大きいと効率が急激に低下する。
+     * ✅ 原始地球適応版：光合成効率（bgf摩擦ベース）
+     * 藻類（ALGAE）などの最初期生命は、過酷な温度摩擦を無効化するゲノムを持つ
      */
     _calcPhotosynthesis(temp, stability) {
         const bgfFriction = Math.abs(temp - BGF) / BGF;
-        const tempEff     = Math.max(0, 1 - bgfFriction * 2.5);
+        
+        // 藻類（algae）の場合は温度摩擦の影響を 1/5 に減衰させて、70℃でも活動可能にする
+        const frictionMitigation = this.plantType === 'algae' ? 0.2 : 1.0;
+        const tempEff     = Math.max(0.05, 1 - bgfFriction * 2.5 * frictionMitigation);
+        
         return tempEff * stability * this.maturity;
     }
 
