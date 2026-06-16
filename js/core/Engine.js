@@ -96,6 +96,15 @@ export class PandoraEngine {
       drive: this.biosphere.drive
     };
 
+    // 🛸🛸 【パンスペルミア（神の介入）回路】 🛸🛸
+    // 地表温度が40.0℃以下に冷え、まだ生命が存在しない場合、マスターの特権で生命を強制ドロップ！
+    if (!this.biosphere.plantTriggered && this.climate.surfaceTemp <= 40.0) {
+      this._log('PANSPERMIA', '環境閾値(40℃)クリア。コロシアムのゲノムを強制受肉！', 'critical');
+      this.biosphere.plantTriggered = true;
+      // 生態系を爆発させるため、イベントも強制発火
+      Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
+    }
+
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
