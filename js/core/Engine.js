@@ -129,13 +129,17 @@ export class PandoraEngine {
       }
     }
 
+    // 5️⃣ 惑星物理本体の更新
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    const strainRelease = oldStrain - this.body.strain;
-    if (strainRelease > 0.1) {
-      this.biosphere.onPhysicalShock(strainRelease);
-      this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
+    // 🌟 FIX: 「惑星の治癒（Strain低下）」を「大地震」と勘違いするバグを完全パージ！
+    // 単純な数値の差分ではなく、EarthBodyが発火する正式な地殻崩壊イベントを使う
+    if (bodySnap.releaseEvent) {
+      // cascade（大崩壊）なら100%の致死ダメージ、minor（小崩壊）なら40%のダメージ
+      const shockPower = bodySnap.releaseEvent === 'cascade' ? 1.0 : 0.4;
+      this.biosphere.onPhysicalShock(shockPower);
+      this._log('GEOLOGICAL', `Strain Release: ${bodySnap.releaseEvent.toUpperCase()}`, 'warn');
     }
 
     this.climate.update(bodySnap, climateInput, delta);
