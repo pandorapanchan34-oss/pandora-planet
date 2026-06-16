@@ -79,12 +79,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     visualizer = new SphereVisualizer('sphere');
 
     // 🌟 競合防止リスナー
-    Events.on(EVENT.PHASE_CHANGED, (payload) => {
-        if (payload.to === 'Singularity') {
-            document.querySelector('.top-panel').classList.add('singularity');
-            window.addLog("SYSTEM_SYNC: 特異点同期モードへ移行しました。", 'critical');
+    // main.js の DOMContentLoaded 内に追加/修正
+Events.on(EVENT.PHASE_CHANGED, (payload) => {
+    const topPanel = document.querySelector('.top-panel');
+    const logo = document.querySelector('.logo');
+    
+    if (payload.to === 'Singularity') {
+        // パネル全体を覚醒モードへ
+        topPanel.classList.add('singularity');
+        
+        // 特異点同期メッセージをログへ注入
+        window.addLog("SYSTEM_SYNC: 特異点同期モードへ移行しました。超越防壁をロック。", 'critical');
+        
+        // フェーズバッジも特異点仕様へ
+        const phaseBadge = document.getElementById('phase');
+        if (phaseBadge) {
+            phaseBadge.textContent = 'SINGULARITY';
+            phaseBadge.style.color = '#aaff44';
+            phaseBadge.style.borderColor = '#aaff44';
         }
-    });
+    }
+});
 
     const runBtn = document.getElementById('runBtn');
     if (runBtn) {
