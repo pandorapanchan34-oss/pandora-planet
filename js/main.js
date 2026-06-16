@@ -3,7 +3,6 @@ import { PLANET_EARTH }  from '../config/planets/earth.js';
 
 let engine, visualizer;
 let lastTime = 0;
-// スピード倍率の初期値
 let timeScale = 1.0; 
 
 /**
@@ -40,8 +39,10 @@ function updateUI(status) {
     setEl('stability', (status.climate.stability * 100).toFixed(0) + '%');
     setEl('pop',       (status.species.population * 100).toFixed(1) + '%');
     setEl('drive',     status.species.drive.toFixed(4));
-    // UIに現在の倍率を表示する場合（HTMLにid="currentSpeed"がある前提）
     setEl('currentSpeed', timeScale.toFixed(1) + 'x');
+
+    // 🟥 コロシアム要塞群の動的UIインジェクション
+    updateFortressUI(status.fortresses);
 
     const alertBox = document.getElementById('alert-box');
     if (alertBox) {
@@ -53,6 +54,38 @@ function updateUI(status) {
             alertBox.textContent = '';
         }
     }
+}
+
+/**
+ * 🟥 惑星表層の要塞ノード群の状態をリアルタイムラスタライズ
+ */
+function updateFortressUI(fortresses) {
+    const container = document.getElementById('fortress-list');
+    if (!container || !fortresses) return;
+
+    // パフォーマンス維持のため、1万倍速時は差分テキスト更新またはフラグメント制御
+    // ここではミニマルかつサイバー感のあるリストを動的生成
+    container.innerHTML = '';
+    
+    fortresses.forEach(fort => {
+        const fortEl = document.createElement('div');
+        fortEl.className = `fortress-node-ui ${fort.status.toLowerCase()}`;
+        
+        // 防御率に応じたネオンカラーの動的変更（50%未満で赤点滅など）
+        const alertClass = fort.defenseRate < 50.0 ? 'critical-pulse' : '';
+        
+        fortEl.innerHTML = `
+            <div class="fort-header">
+                <span class="fort-name">🏰 ${fort.name}</span>
+                <span class="fort-tier">T${fort.tier}</span>
+            </div>
+            <div class="fort-meta">
+                <span class="fort-rate ${alertClass}">防御率: ${fort.defenseRate.toFixed(1)}%</span>
+                <span class="fort-status-tag">[${fort.status}]</span>
+            </div>
+        `;
+        container.appendChild(fortEl);
+    });
 }
 
 /**
@@ -102,49 +135,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // ✅ スピード調整ボタンの追加例（HTMLにid="speedUp", "speedDown"がある場合）
+    // スピード調整ボタン
     const speedUp = document.getElementById('speedUp');
     const speedDown = document.getElementById('speedDown');
     
     if (speedUp) {
         speedUp.addEventListener('click', () => {
-            timeScale = Math.min(timeScale + 0.5, 10.0); // 最大10倍
+            timeScale = Math.min(timeScale + 0.5, 10.0);
             window.addLog(`TIME SCALE: ${timeScale.toFixed(1)}x`, 'info');
         });
     }
     if (speedDown) {
         speedDown.addEventListener('click', () => {
-            timeScale = Math.max(timeScale - 0.5, 0.5); // 最小0.5倍
+            timeScale = Math.max(timeScale - 0.5, 0.5);
             window.addLog(`TIME SCALE: ${timeScale.toFixed(1)}x`, 'info');
         });
     }
 
+    // スピード倍率ボタンの制御（1x 〜 10k）
+    const speedButtons = {
+        'btn-1x': 1,
+        'btn-50x': 50,
+        'btn-100x': 100,
+        'btn-1k': 1000,
+        'btn-10k': 10000
+    };
+
+    Object.keys(speedButtons).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                timeScale = speedButtons[id];
+                Object.keys(speedButtons).forEach(key => {
+                    document.getElementById(key)?.classList.remove('active');
+                });
+                btn.classList.add('active');
+                window.addLog(`TIME ACCELERATED: ${timeScale}x`);
+            });
+        }
+    });
+
     requestAnimationFrame(loop);
 });
-// スピード倍率ボタンの制御
-const speedButtons = {
-    'btn-1x': 1,
-    'btn-50x': 50,
-    'btn-100x': 100,
-    'btn-1k': 1000,
-    'btn-10k': 10000
-};
-
-Object.keys(speedButtons).forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) {
-        btn.addEventListener('click', () => {
-            // 倍率を更新
-            timeScale = speedButtons[id];
-            
-            // 全ボタンのactiveクラスを外して、押したボタンだけつける（見た目の変化）
-            Object.keys(speedButtons).forEach(key => {
-                document.getElementById(key)?.classList.remove('active');
-            });
-            btn.classList.add('active');
-            
-            window.addLog(`TIME ACCELERATED: ${timeScale}x`);
-        });
-    }
-});
-
