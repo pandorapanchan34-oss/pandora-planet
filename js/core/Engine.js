@@ -14,17 +14,16 @@ export class PandoraEngine {
     this.active = false;
     this.time   = 0;
 
-    // 各サブシステムのインスタンス化（器官の受肉）
+    // 各種器官の受肉（インスタンス化）
     this.body      = new EarthBody(planetConfig);
     this.biosphere = new Biosphere();
     this.climate   = new ClimateSystem(planetConfig);
-    
+
     this.atmosphere  = new Atmosphere(planetConfig);
     this.geosphere   = new Geosphere(planetConfig);
     this.hydrosphere = new Hydrosphere(planetConfig);
     this.originManager = new OriginManager(planetConfig);
 
-    // コロシアム要塞群のデータレイヤーを惑星内に受肉
     this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
 
     this.state = {
@@ -33,21 +32,19 @@ export class PandoraEngine {
     };
 
     this.eventLog   = [];
-    
-    // earth.js の定義（1_000_000）を正しくマウント。なければ1Ma
     this._yearScale = planetConfig.yearScale ?? 1_000_000;
 
     this._initGlobalListeners();
 
-    // 初期状態確定の完全同期
+    // 初期状態の確定マウント
     const bodySnap = this.body.getSnapshot();
     const bioSnap  = this.biosphere.getSnapshot();
-    const atmoSnap = this.atmosphere.getSnapshot();
     
     this.geosphere.update(bodySnap, 0);
-    this.hydrosphere.update(bodySnap, { co2Level: this.atmosphere.co2Level }, this.climate.getSnapshot(), 0);
+    // ✅ 引数のねじれを修正（Hydrosphereには正しいbioSnapを渡す）
+    this.hydrosphere.update(bodySnap, bioSnap, this.climate.getSnapshot(), 0);
     this.atmosphere.update(bodySnap, bioSnap, this.climate.getSnapshot(), 0);
-    this.originManager.update(bodySnap, this.geosphere.getSnapshot(), atmoSnap, 0);
+    this.originManager.update(bodySnap, this.geosphere.getSnapshot(), this.atmosphere.getSnapshot(), 0);
 
     const initialClimateInput = {
       co2Level:     this.atmosphere.co2Level,
@@ -72,7 +69,6 @@ export class PandoraEngine {
   update(delta) {
     if (!this.active) return;
 
-    // 全てのサブシステム（物理・気候・生命）に共通の加速時間軸（delta）を流し込む
     this.time       += delta;
     this.state.year += this._yearScale * delta;
 
@@ -86,21 +82,22 @@ export class PandoraEngine {
     let bioSnap     = this.biosphere.getSnapshot();
     let atmoSnap    = this.atmosphere.getSnapshot();
 
-    // 1️⃣ 環境システムの更新
+    // 1️⃣ 環境の四圏 ＆ 起源システムのリアルタイム更新（統合パッチ）
     this.geosphere.update(bodySnap, delta);
-    this.hydrosphere.update(bodySnap, { co2Level: this.atmosphere.co2Level }, climSnap, delta);
+    // ✅ 引数の順序を Hydrosphere.js の定義（body, bio, climate, delta）に100%同期！
+    this.hydrosphere.update(bodySnap, bioSnap, climSnap, delta);
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
     
     atmoSnap = this.atmosphere.getSnapshot();
     const geoSnap = this.geosphere.getSnapshot();
 
-    // 2️⃣ 生命起源プレーンの同期 ＆ 誕生イベントの検知
+    // 起源点（熱水噴出孔・雷）の起源監視
     const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
     if (originEvent) {
       this._onOriginEvent(originEvent);
     }
 
-    // 3️⃣ 環境パケット（生データ）のブレンド
+    // 2️⃣ 植物・動物圏に流し込む環境ブレンドパケットのビルド
     const climateInput = {
       surfaceTemp: this.climate.surfaceTemp,
       stability:   this.climate.stability,
@@ -111,40 +108,42 @@ export class PandoraEngine {
       drive:        this.biosphere.drive
     };
 
-    // 4️⃣ 生命圏（Biosphere）の更新
+    // 3️⃣ 生命圏（Biosphere）の更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
+      // 大気・地殻・水圏から発生する自然エントロピーの総量
       const envContribution = this.atmosphere.getEntropyContribution() 
                             + this.geosphere.getEntropyContribution() 
                             + this.hydrosphere.getEntropyContribution();
 
-      // 熱水噴出孔群が生成する「局所負エントロピー」も合算して還流
+      // 熱水噴出孔の負エントロピー還流
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
       this.body.setPhi(this.body.phi + bioResult.writeout);
       
+      // 全エントロピー圧をコアにインジェクション（NaN混入の完全防壁）
       const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy;
-      if (finalEntropyDelta !== 0) {
+      if (!isNaN(finalEntropyDelta) && isFinite(finalEntropyDelta) && finalEntropyDelta !== 0) {
         this.body.applyEntropy(finalEntropyDelta);
       }
     }
 
-    // 5️⃣ 惑星物理本体の更新
+    // 4️⃣ 惑星物理コアの更新
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    // Strain解放 → 物理衝撃の伝播
+    // Strain解放時の地質衝撃の伝播
     const strainRelease = oldStrain - this.body.strain;
     if (strainRelease > 0.1) {
       this.biosphere.onPhysicalShock(strainRelease);
       this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
     }
 
-    // 6️⃣ 気候システムへのフィードバック同期
+    // 5️⃣ 気候システムへの同期フィードバック
     this.climate.update(bodySnap, climateInput, delta);
 
-    // 7️⃣ コロシアム要塞の環境同期
+    // 6️⃣ サイバー要塞（コロシアム）の環境同期
     this._updateCyberSphere(this.climate.getSnapshot(), delta);
 
     HistoryManager.checkCriticalStates(this);
