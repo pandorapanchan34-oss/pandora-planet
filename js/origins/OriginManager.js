@@ -88,6 +88,22 @@ export class OriginManager {
         }
 
         // 4. 生命誕生チェック（噴出孔）
+        // 🌟 🟥 新規受肉：文明過飽和の持続による「電脳生命」の多点発生キー
+        if (bodySnap.phi >= 0.98 && strain <= 2.0 && !this.cyberGenesisOccurred) {
+            // 文明の演算密度（drive）が臨界を超え、かつ系が一定の「安定」を保っていること
+            if (atmoSnap.contribution > 5.0 && Math.random() < 0.05 * delta) {
+                this.cyberGenesisOccurred = true;
+                this.genesisCount++;
+                
+                return {
+                    type:    'cyber_genesis',
+                    source:  'cyber',
+                    x:       36, // コロシアム中央座標
+                    y:       18,
+                    message: '🌌 警告：最大エントロピー密集地帯（文明）の安定対流圏にて、初の非有機電脳生命の受肉（Hello World）を検知！'
+                };
+            }
+        }
         for (const vent of this.vents) {
             if (vent.genesisReady && !this.firstGenesisOccurred) {
                 const success = vent.triggerGenesis();
