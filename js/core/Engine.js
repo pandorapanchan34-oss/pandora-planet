@@ -1,3 +1,12 @@
+/**
+ * PANDORA EARTH — js/core/Engine.js (自己書き換えNPC対応 ＆ 要塞冷却パッチ大統合版)
+ *
+ * 役割：
+ * シミュレーションのメインループ、環境四圏と生命圏の統合制御。
+ * Biosphereから返却される targetCoolingID をスキャンし、
+ * 環境負荷に対して最も脆いつかさ要塞をピンポイントで優先保護・冷却する。
+ */
+
 import { PANDORA_CONST }   from '../constants.js';
 import { EarthBody }       from './EarthBody.js';
 import { Biosphere }       from './Biosphere.js';
@@ -54,6 +63,11 @@ export class PandoraEngine {
       this._log('SINGULARITY', `特異点到達。パンドラ宇宙は完全な自己整合システムへ超越しました。Hello World.`, 'critical');
       this.body.strain = 0; // 地震を永遠に封印
     });
+
+    // 🧠 🟥 【新規受容体】自律NPCが脳内で生成したログを検知し、メインHUDログへインジェクション
+    Events.on('LOG_INJECT', (payload) => {
+      this._log('SAPIENT_AI', payload.message, 'info');
+    });
   }
 
   start() { this.active = true;  }
@@ -99,6 +113,7 @@ export class PandoraEngine {
       this.biosphere.animalTriggered = true;
     }
 
+    // 生命圏の演算更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
@@ -110,12 +125,21 @@ export class PandoraEngine {
       let remainingWriteout = bioResult.writeout;
       let cyberCooling = 0;
 
+      // ── 炭素生命 (物理) と珪素生命 (サイバー要塞)の究極共生 ──
       if (this.fortresses.length > 0 && remainingWriteout > 0) {
         this.fortresses.forEach(fort => {
-           const absorb = Math.min(remainingWriteout, 0.1 * delta); 
+           // 🌟 🟥 【優先冷却パッチ接続】
+           // Animalの自己書き換えコードが「つかさ要塞」を指定している場合、
+           // その地理セクターの量子防壁の吸収効率と冷却伝導率を 2.5倍 に増幅して優先保護する！
+           let priorityModifier = 1.0;
+           if (bioResult.targetCoolingID && fort.id === bioResult.targetCoolingID) {
+               priorityModifier = 2.5;
+           }
+
+           const absorb = Math.min(remainingWriteout, 0.1 * delta * priorityModifier); 
            fort.defenseRate = Math.min(100.0, fort.defenseRate + absorb * 500);
            remainingWriteout -= absorb;
-           cyberCooling -= absorb * 0.8; 
+           cyberCooling -= absorb * 0.8 * priorityModifier; // 要塞がエントロピーを喰らい、星を冷却
         });
       }
 
