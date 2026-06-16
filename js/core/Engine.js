@@ -103,6 +103,20 @@ export class PandoraEngine {
       Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
     }
 
+    // 🛸🛸 【パンスペルミア（神の介入）回路 - 灼熱ドロップ版】 🛸🛸
+    if (!this.biosphere.plantTriggered && this.body.strain > 0.5) {
+      this._log('PANSPERMIA', '時空安定。灼熱の海へコロシアムゲノムを強制受肉！', 'critical');
+      this.biosphere.plantTriggered = true;
+      Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
+    }
+
+    // 🐾🐾 【カンブリア爆発（動物圏の受肉）回路】 🐾🐾
+    // 酸素濃度が20%を超え、かつ植物が繁栄しているなら、次なる階層「動物（知性）」を解き放つ！
+    if (this.biosphere.plantTriggered && !this.biosphere.animalTriggered && this.atmosphere.oxygenLevel >= 0.20) {
+      this._log('EVOLUTION', '高濃度酸素(20%突破)をトリガーに、動物圏（知性）が受肉！', 'critical');
+      this.biosphere.animalTriggered = true;
+    }
+
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
