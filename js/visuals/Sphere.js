@@ -114,4 +114,110 @@ export class SphereVisualizer {
       for (let v = 0; v < origins.activeVents; v++) {
         const vAngle = (v * 2.3 + time * 0.001) % (Math.PI * 2);
         const vx = cx + Math.sin(vAngle) * r * 0.7;
-        const vy = cy + Math.cos(vAngle) * r * 0.5; // 南半球寄りに
+        const vy = cy + Math.cos(vAngle) * r * 0.5; // 南半球寄りに投影
+        ctx.beginPath(); ctx.arc(vx, vy, 2 + Math.sin(time * 0.05 + v) * 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    if (body.strain > 8.5) {
+      const sa = Math.min(0.6, (body.strain - 8.5) / 10);
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,30,50,${sa * (0.5 + Math.sin(time * 0.02) * 0.5)})`;
+      ctx.lineWidth = 4; ctx.stroke();
+    }
+
+    // 5. 南極排出
+    const outCount = Math.min(Math.floor(body.entropyOutflow * 800), 150);
+    const dCol     = body.isDischargeBlocked ? '255,0,0' : '255,100,50';
+    const blink    = body.isDischargeBlocked ? (Math.sin(time * 0.05) > 0 ? 1 : 0.2) : 1;
+    for (let i = 0; i < outCount; i++) {
+      const t = (time * 0.003 + i * 0.05) % 1.0;
+      const x = cx + Math.cos(i * 1.1) * r * t * 0.8;
+      const y = cy + r * 0.5 + t * r * 1.5;
+      ctx.fillStyle = `rgba(${dCol},${(1 - t) * blink})`; ctx.fillRect(x, y, 3, 3);
+    }
+
+    // 6. 生命圏リング ＆ 粒子エンジン点火
+    if (biosphere && biosphere.plantTriggered) {
+      const bioR = r * (1.05 + species.biodiversity * 0.08);
+      
+      // 動物（animalCount）が受肉すると、リングの光が「シアン」から「マゼンタ・高次元ピンク」へと覚醒を始める
+      let rColor = '68, 255, 238'; // デフォルト：シアン
+      if (biosphere.animalCount > 0) {
+        rColor = '255, 68, 200'; // 動物覚醒：サイバーピンク
+      }
+      const bCol = `rgba(${rColor}, ${0.3 + species.population * 0.5})`;
+      
+      ctx.beginPath(); ctx.arc(cx, cy, bioR, 0, Math.PI * 2);
+      ctx.strokeStyle = bCol; ctx.lineWidth = 1.5 + species.biodiversity * 4;
+      ctx.shadowColor = bCol; ctx.shadowBlur = 15; ctx.stroke(); ctx.shadowBlur = 0;
+
+      // 🌠 【生命の胞子パーティクルループ】
+      const pActiveCount = Math.floor(species.population * 180) + 20;
+      this.particles.slice(0, pActiveCount).forEach(p => {
+        if (p.distance === 0 || p.distance > r * 1.35) {
+          p.distance = r * (0.1 + Math.random() * 0.9); // 地表から湧出
+          p.opacity = Math.random() * 0.8 + 0.2;
+        }
+        
+        // 生物活性ドライブ（species.drive）が高まると、粒子の宇宙への噴出速度が何倍にも急加速！
+        p.distance += p.speed * (1.0 + species.drive * 12);
+        
+        const px = cx + Math.sin(p.angle) * p.distance;
+        const py = cy + Math.cos(p.angle) * p.distance * 0.85; // 楕円圧縮
+        
+        ctx.fillStyle = `rgba(${rColor}, ${p.opacity * (1 - (p.distance / (r * 1.35)))})`;
+        ctx.fillRect(px, px, p.size, p.size);
+      });
+    }
+
+    // 7. 気象エフェクト
+    const efMap = {
+      EXTREME_STORM: ['255,255,255', 0.12, 0.08],
+      HEAVY_RAIN:    ['100,180,255', 0.07, 0.04],
+      BLIZZARD:      ['200,230,255', 0.10, 0.03],
+      HEATWAVE:      ['255,100,0',   0.08, 0.05],
+    };
+    if (climate.weatherEvent && efMap[climate.weatherEvent]) {
+      const [ec, ea, ep] = efMap[climate.weatherEvent];
+      ctx.fillStyle = `rgba(${ec},${ea * (0.5 + Math.sin(time * ep) * 0.5)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 8. bgf メーター（拡張環境パラメータ HUD）
+    const ratio = body.strain / PANDORA_DERIVED.BGF;
+    const mCol  = ratio >= 1.2 ? '#ff2244' : ratio >= 1.0 ? '#ff8800' : '#00e5a0';
+    const mx = W - 112, my = H - 28;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(mx - 4, my - 32, 108, 44);
+    ctx.fillStyle = 'rgba(0,40,20,0.5)'; ctx.fillRect(mx, my, 100, 6);
+    ctx.fillStyle = mCol; ctx.shadowColor = mCol; ctx.shadowBlur = ratio >= 1 ? 8 : 0;
+    ctx.fillRect(mx, my, Math.min(1, ratio / 1.5) * 100, 6); ctx.shadowBlur = 0;
+    
+    ctx.fillStyle = 'rgba(180,220,200,0.55)'; ctx.font = '8px "Courier New"'; ctx.textAlign = 'left';
+    ctx.fillText(`Φ  ${body.phi.toFixed(3)}`, mx, my - 16);
+    // 大気圏（Atmosphere）からリアルタイムに酸素・CO2濃度を吸い上げてHUDにインジェクション！
+    if (atmosphere) {
+      ctx.fillText(`O₂ ${(atmosphere.oxygenLevel * 100).toFixed(1)}% / CO₂ ${atmosphere.co2Level.toFixed(1)}`, mx, my - 6);
+    }
+    ctx.fillStyle = mCol; ctx.textAlign = 'right';
+    ctx.fillText(`Strain ${body.strain.toFixed(2)}`, mx + 100, my - 16);
+
+    // 9. フェーズフラッシュ
+    if (phase !== this._prevPhase) {
+      this._flashAlpha = 0.35;
+      this._flashColor = phase === 'Singularity' ? '170,255,68' : phase === 'Sapient' ? '255,100,200' : phase === 'Complex' ? '255,200,50' : '50,255,150';
+      this._prevPhase  = phase;
+    }
+    if (this._flashAlpha > 0.01) {
+      ctx.fillStyle = `rgba(${this._flashColor},${this._flashAlpha})`; ctx.fillRect(0, 0, W, H);
+      this._flashAlpha *= 0.88;
+    }
+  }
+
+  startLoop(getSnapshot) {
+    const loop = ts => { const s = getSnapshot(); if (s) this.draw(s, ts); this._rafId = requestAnimationFrame(loop); };
+    this._rafId = requestAnimationFrame(loop);
+  }
+
+  stopLoop() { if (this._rafId) cancelAnimationFrame(this._rafId); }
+}
