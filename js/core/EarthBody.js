@@ -68,7 +68,7 @@ export class EarthBody {
         this.mantleTemp += (heatGain - heatLoss) * tempLerp;
         this.mantleTemp  = Math.max(-50, Math.min(2000, this.mantleTemp));
 
-        this.isDischargeBlocked = this.strain > PANDORA_DERIVED.DISCHARGE_BAND * 2;
+        this.isDischargeBlocked = this.strain > PANDORA_DERIVED.DISCHARGE_BAND * 4.0;
         this.releaseEvent = this._checkStrainRelease();
 
         this._strainHistory.push(+this.strain.toFixed(3));
