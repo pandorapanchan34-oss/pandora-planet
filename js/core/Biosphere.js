@@ -1,6 +1,6 @@
 /**
  * PANDORA EARTH — js/core/Biosphere.js
- * 生命圏全体の状態管理（完全版）
+ * 生命圏全体の状態管理（完全統合・時間加速同期版）
  */
 
 import {
@@ -46,7 +46,7 @@ export class Biosphere {
     }
 
     /**
-     * メインアップデート
+     * メメインアップデート
      * @returns {Object} Engineに渡す計算結果
      */
     update(body, climate, delta) {
@@ -55,6 +55,15 @@ export class Biosphere {
         this.s_critical = calcSCritical(body.strain);
         this.saturation = calcSaturation(this.s_local, this.s_critical);
 
+        // ✅ FIX①: env オブジェクトの定義を最上部へマウント（ReferenceErrorの完全排除）
+        const env = {
+            temp:      climate.surfaceTemp ?? 19.15,
+            stability: climate.stability   ?? 1.0,
+            strain:    body.strain          ?? 0,
+            phi:       body.phi             ?? 0.82,
+            bgf:       body.bgf             ?? 19.15,
+        };
+
         let totalCooling  = 0;
         let totalWriteout = 0;
 
@@ -62,28 +71,31 @@ export class Biosphere {
         if (this.phase === 'accumulation') {
             // 誕生トリガーチェック
             if (isPlantTrigger(this.s_local, this.s_critical, body.strain) && !this.plantTriggered) {
+                // ✅ これで安全に env を渡せる！
                 this._genesisPlant(env);
                 this.plantTriggered = true;
                 this.phase = 'cooling';
                 this.coolingTimer = COOLING_PERIOD;
             }
         } else if (this.phase === 'cooling') {
+            // ✅ FIX②: 1万倍速の巨大な delta が入ってきても、タイマーがマイナスに吹き飛んで無限ループ化するのを防ぐ
             this.coolingTimer -= delta * 60; // 60fps想定
             if (this.coolingTimer <= 0) {
+                this.coolingTimer = 0;
                 this.phase = 'accumulation';
             }
         }
 
-        // 3. 植物個体の更新
-        // envオブジェクトをひとつに統合してPlant.update(env, delta)に渡す
-        const env = {
-            temp:      climate.surfaceTemp ?? 19.15,
-            stability: climate.stability   ?? 1.0,
-            strain:    body.strain         ?? 0,
-            phi:       body.phi            ?? 0.82,
-            bgf:       body.bgf            ?? 19.15,
-        };
+        // 🌟 コロシアム・ゲノム相転移：生命がすでに誕生している場合、環境に合わせた動的な生命維持を計算
+        // （もしMAX値未満なら、加速されたdeltaに応じて一定確率で自動追加増殖させる規律を追加）
+        if (this.plantTriggered && this.plants.filter(p => p.alive).length < MAX_PLANTS) {
+            // 加速されたdeltaに比例した確率で、1万倍速の世界でも秒速で個体を自動補充
+            if (Math.random() < 0.5 * delta * 60 || this.plants.length === 0) {
+                this._genesisPlant(env);
+            }
+        }
 
+        // 3. 植物個体の更新
         this.plants.forEach(plant => {
             const wasAlive = plant.alive;
             plant.update(env, delta);
@@ -92,8 +104,8 @@ export class Biosphere {
             if (plant.alive) {
                 totalCooling += calcCoolingEffect(
                     this.s_local,
-                    this.coolingTimer / COOLING_PERIOD
-                );
+                    COOLING_PERIOD > 0 ? (this.coolingTimer / COOLING_PERIOD) : 0
+                ) * delta; // タイムスケール同期
             }
 
             // 死による情報の還流（死亡した瞬間のみ）
@@ -102,16 +114,17 @@ export class Biosphere {
             }
         });
 
-        // 4. 個体リストの掃除（完全に消滅した個体を除去）
+        // 4. 個体リストの掃除
         this.plants = this.plants.filter(p => p.alive || p.age < p.lifespan + 10);
 
         // 5. 統計の更新
-        this.population = this.plants.filter(p => p.alive).length / MAX_PLANTS;
+        const aliveCount = this.plants.filter(p => p.alive).length;
+        this.population = aliveCount / MAX_PLANTS;
         this.biodiversity = new Set(this.plants.map(p => p.type)).size / 5;
 
-        // ──────────────────────────────────────────────────
-        // ✅ 重要：Engine.js が期待する形式で計算結果を返す
-        // ──────────────────────────────────────────────────
+        // 植物の総駆動エネルギーを要塞ドライブへ同期させるための因果導線
+        this.drive = aliveCount > 0 ? (this.biodiversity * 0.1) : 0;
+
         return {
             entropyDelta: totalCooling, // 負の値（惑星を冷やす）
             writeout:     totalWriteout  // 正の値（死の記録をΦに刻む）
@@ -133,12 +146,10 @@ export class Biosphere {
     onPhysicalShock(intensity) {
         console.warn(`[Biosphere] Received Shock: ${intensity.toFixed(2)}`);
         
-        // 全個体にダメージ
         this.plants.forEach(p => {
             if (Math.random() < intensity * 0.5) p.alive = false;
         });
 
-        // 強い衝撃（0.8以上）なら誕生フラグをリセットしてやり直し
         if (intensity >= 0.8) {
             this.plantTriggered = false;
             this.phase = 'accumulation';
@@ -146,11 +157,11 @@ export class Biosphere {
     }
 
     /**
-     * スナップショット（EngineのgetFullStatus用）
+     * スナップショット
      */
     getSnapshot() {
         return {
-            phase:        this.phase,
+            phase:          this.phase,
             population:   +this.population.toFixed(3),
             biodiversity: +this.biodiversity.toFixed(3),
             plantCount:   this.plants.filter(p => p.alive).length,
