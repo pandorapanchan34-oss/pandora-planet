@@ -1,19 +1,13 @@
 /**
  * PANDORA EARTH — js/origins/HydrothermalVent.js
  *
- * 熱水噴出孔（生命起源点）
+ * 熱水噴出孔（生命起源点 — 負エントロピー変数完全同期版）
  *
  * Pandora Theory における役割：
- *   Strain≥3.0で地殻に「隙間」ができ、
- *   bgf摩擦が低い局所環境が生まれる。
- *   ここが情報場の「受容体」となり、
- *   最初の自己複製構造（原始生命）の発生点になる。
- *
- * フロー：
- *   Geosphere.ventActive=true
- *     → HydrothermalVent.activate()
- *     → OriginManager が検知
- *     → Biosphere.plantTriggered への橋渡し
+ * Strain≥3.0で地殻に「隙間」ができ、
+ * bgf摩擦が低い局所環境が生まれる。
+ * ここが情報場の「受容体」となり、
+ * 最初の自己複製構造（原始生命）の発生点になる。
  */
 
 import { calcSLocal, calcSCritical } from '../core/Entropy.js';
@@ -54,7 +48,7 @@ export class HydrothermalVent {
         this.genesisReady    = false;
         this.genesisOccurred = false;
 
-        // エントロピー寄与（局所的な負エントロピー生成）
+        // ✅ 実体：アンダースコアありで統一
         this._localNegentropy = 0;
     }
 
@@ -101,9 +95,7 @@ export class HydrothermalVent {
         // bgf摩擦（局所温度とbgfの乖離）
         const bgfFriction = Math.abs(this.localTemp - BGF) / BGF;
 
-        // 局所負エントロピー：
-        // 化学勾配が高く、bgf摩擦が小さい場所ほど
-        // 「情報の受容体」として機能する
+        // 局所負エントロピー計算
         const chemBoost = this.chemDensity * 0.5;
         const frictionPenalty = bgfFriction * 0.3;
         this._localNegentropy = Math.max(0,
@@ -115,11 +107,6 @@ export class HydrothermalVent {
     }
 
     // ── 生命誕生準備チェック ──────────────────────────────
-    /**
-     * S_localがS_criticalに近づいている AND
-     * 噴出孔が十分活性 AND
-     * まだ生命誕生していない
-     */
     _checkGenesisReady(phi, strain) {
         if (this.genesisOccurred) return;
 
@@ -127,7 +114,6 @@ export class HydrothermalVent {
         const s_critical = calcSCritical(strain);
         const saturation = s_critical > 0 ? s_local / s_critical : 0;
 
-        // 過飽和度0.7以上 + 活性度0.4以上 = 生命誕生準備完了
         this.genesisReady = (
             saturation >= 0.7 &&
             this.activity >= MIN_ACTIVITY_FOR_GENESIS &&
@@ -135,7 +121,7 @@ export class HydrothermalVent {
         );
     }
 
-    // ── 生命誕生実行（OriginManagerから呼ばれる）─────────
+    // ── 生命誕生実行 ────────────────────────────────────
     triggerGenesis() {
         if (!this.genesisReady || this.genesisOccurred) return false;
         this.genesisOccurred = true;
@@ -144,11 +130,11 @@ export class HydrothermalVent {
     }
 
     // ── エントロピー寄与 ──────────────────────────────────
-    // ⚙️ HydrothermalVent.js の最下部付近を修正
-    // 🟢 HydrothermalVent.js の最下部を以下に上書き
+    /**
+     * ✅ FIX: 排出口の変数名を実体（this._localNegentropy）と100%同期
+     */
     getLocalNegentropy() {
-        // アンダースコアを削除して、正しいプロパティ名にマウント！
-        return -this.localNegentropy; 
+        return -this._localNegentropy; 
     }
     
     getSnapshot() {
