@@ -145,8 +145,9 @@ export class HydrothermalVent {
 
     // ── エントロピー寄与 ──────────────────────────────────
     // ⚙️ HydrothermalVent.js の最下部付近を修正
+    // 🟢 HydrothermalVent.js の最下部を以下に上書き
     getLocalNegentropy() {
-        // アンダースコアを消して、コンストラクターの定義名（this.localNegentropy）と完全同期させる！
+        // アンダースコアを削除して、正しいプロパティ名にマウント！
         return -this.localNegentropy; 
     }
     
