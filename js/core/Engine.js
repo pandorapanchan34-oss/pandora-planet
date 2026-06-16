@@ -51,14 +51,13 @@ export class PandoraEngine {
 
   _initGlobalListeners() {
     Events.on(EVENT.BLACK_HOLE, (payload) => {
-      // 🌟 FIX: 特異点でフリーズ（this.stop()）する絶望の矛盾をパージ！
-      // 代わりに、情報場を強制冷却して生命を初期化する「カンブリア的輪廻（REBOOT）」を発動！
+      // 🌟 FIX: 特異点でフリーズする矛盾をパージ！カンブリア的輪廻（REBOOT）
       this.state.rebootCount++;
       this._log('SINGULARITY', `特異点到達。大域崩壊を回避し、次次元(Cycle ${this.state.rebootCount})へRebootを敢行。`, 'critical');
       
-      this.body.setPhi(PANDORA_CONST.PHI_IDEAL * 0.9); // Φを理想値以下にリセット
+      this.body.setPhi(PANDORA_CONST.PHI_IDEAL * 0.9);
       this.body.strain = 0;
-      this.biosphere.onPhysicalShock(10.0); // 物理空間の生命のみ大絶滅
+      this.biosphere.onPhysicalShock(10.0);
       this.state.phase = 'Pre-Biotic';
     });
   }
@@ -71,7 +70,7 @@ export class PandoraEngine {
 
     this.time       += delta;
     this.state.year += this._yearScale * delta;
-    
+    // 🌟 FIX: 時間の壁（0Maで止まる仕様）は完全に破壊済み！未来へ進みます。
 
     const oldStrain = this.body.strain;
     let bodySnap    = this.body.getSnapshot();
@@ -96,12 +95,11 @@ export class PandoraEngine {
       drive: this.biosphere.drive
     };
 
-    // 🛸🛸 【パンスペルミア（神の介入）回路】 🛸🛸
-    // 地表温度が40.0℃以下に冷え、まだ生命が存在しない場合、マスターの特権で生命を強制ドロップ！
-    if (!this.biosphere.plantTriggered && this.climate.surfaceTemp <= 40.0) {
-      this._log('PANSPERMIA', '環境閾値(40℃)クリア。コロシアムのゲノムを強制受肉！', 'critical');
+    // 🛸🛸 【パンスペルミア（神の介入）回路 - 灼熱ドロップ版】 🛸🛸
+    // Strainが溜まった瞬間にコロシアムゲノムを強制受肉！
+    if (!this.biosphere.plantTriggered && this.body.strain > 0.5) {
+      this._log('PANSPERMIA', '時空安定。灼熱の海へコロシアムゲノムを強制受肉！', 'critical');
       this.biosphere.plantTriggered = true;
-      // 生態系を爆発させるため、イベントも強制発火
       Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
     }
 
@@ -114,18 +112,14 @@ export class PandoraEngine {
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
       // 🌟🌟 【パンドラ・シンビオシス（究極共生）】 🌟🌟
-      // 動物（知性）が死と共に吐き出す強烈なエントロピー（writeout）を、
-      // サイバー空間のコロシアム要塞たちが「極上の演算リソース」として喰らい尽くす！
       let remainingWriteout = bioResult.writeout;
       let cyberCooling = 0;
 
       if (this.fortresses.length > 0 && remainingWriteout > 0) {
         this.fortresses.forEach(fort => {
-           // 要塞がDriveを吸収し、自らの防壁（防御率）を修復・強化する
            const absorb = Math.min(remainingWriteout, 0.1 * delta); 
            fort.defenseRate = Math.min(100.0, fort.defenseRate + absorb * 500);
            remainingWriteout -= absorb;
-           // 要塞がエントロピーを消費した分だけ、地球物理コアへの負荷がキャンセル（冷却）される！
            cyberCooling -= absorb * 0.8; 
         });
       }
@@ -135,31 +129,15 @@ export class PandoraEngine {
       const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy + cyberCooling;
       if (!isNaN(finalEntropyDelta) && isFinite(finalEntropyDelta) && finalEntropyDelta !== 0) {
         this.body.applyEntropy(finalEntropyDelta);
-
-        // ... 前略 ...
-    this._updatePhase(this.body.phi);
-
-    // 🌟 FIX: 全滅からの輪廻（リスポーン待機）回路！
-    // もし生命が一度誕生したのに「POP 0」になったら、地球を完全に初期化して次のGenesisを待つ
-    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0) {
-      this.state.rebootCount++;
-      this._log('EXTINCTION', `生命圏が完全に沈黙。フラグを初期化し、次のGenesis(Cycle ${this.state.rebootCount})を待機。`, 'critical');
-      
-      // 誕生フラグを「未誕生(false)」にデフラグ！これで再び熱水噴出孔から生命が湧く！
-      this.biosphere.plantTriggered  = false;
-      this.biosphere.animalTriggered = false;
-      this.state.phase = 'Pre-Biotic';
+      }
     }
-  } 
 
     // 5️⃣ 惑星物理本体の更新
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    // 🌟 FIX: 「惑星の治癒（Strain低下）」を「大地震」と勘違いするバグを完全パージ！
-    // 単純な数値の差分ではなく、EarthBodyが発火する正式な地殻崩壊イベントを使う
+    // 🌟 FIX: 惑星の治癒を大地震と勘違いするバグを完全パージ
     if (bodySnap.releaseEvent) {
-      // cascade（大崩壊）なら100%の致死ダメージ、minor（小崩壊）なら40%のダメージ
       const shockPower = bodySnap.releaseEvent === 'cascade' ? 1.0 : 0.4;
       this.biosphere.onPhysicalShock(shockPower);
       this._log('GEOLOGICAL', `Strain Release: ${bodySnap.releaseEvent.toUpperCase()}`, 'warn');
@@ -170,6 +148,15 @@ export class PandoraEngine {
 
     HistoryManager.checkCriticalStates(this);
     this._updatePhase(this.body.phi);
+
+    // 🌟 FIX: 全滅からの輪廻（リスポーン待機）回路！
+    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0) {
+      this.state.rebootCount++;
+      this._log('EXTINCTION', `生命圏が完全に沈黙。フラグを初期化し、次のGenesis(Cycle ${this.state.rebootCount})を待機。`, 'critical');
+      this.biosphere.plantTriggered  = false;
+      this.biosphere.animalTriggered = false;
+      this.state.phase = 'Pre-Biotic';
+    }
   }
 
   _onOriginEvent(event) {
@@ -184,7 +171,6 @@ export class PandoraEngine {
     if (this.fortresses.length === 0) return;
     const temp = climateSnapshot.surfaceTemp;
     this.fortresses.forEach(fort => {
-      // 🌟 環境悪化による防壁へのダメージ（先ほどの吸収で相殺される熱いチキンレース）
       if (temp > 40.0) {
         const decay = (temp - 40.0) * fort.climateSensitivity * delta;
         fort.defenseRate = Math.max(0.0, fort.defenseRate - decay);
@@ -212,7 +198,6 @@ export class PandoraEngine {
 
     if (next !== this.state.phase) {
       this.state.phase = next;
-      // 輪廻（Reboot）中はフェーズ名を拡張表示
       const phaseName = this.state.rebootCount > 0 ? `${next} [Cycle ${this.state.rebootCount}]` : next;
       this._log('PHASE', `Enter ${phaseName}`, 'phase');
       Events.emit(EVENT.PHASE_CHANGED, { to: next });
@@ -234,7 +219,7 @@ export class PandoraEngine {
       time:    +this.time.toFixed(2),
       year:    Math.round(this.state.year / 1_000_000) + 'Ma',
       phase:   this.state.phase,
-      rebootCount: this.state.rebootCount, // 🌟 UIエクスポート
+      rebootCount: this.state.rebootCount,
       body:    this.body.getSnapshot(),
       climate: this.climate.getSnapshot(),
       atmosphere: this.atmosphere.getSnapshot(),
