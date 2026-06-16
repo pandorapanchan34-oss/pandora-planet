@@ -135,8 +135,22 @@ export class PandoraEngine {
       const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy + cyberCooling;
       if (!isNaN(finalEntropyDelta) && isFinite(finalEntropyDelta) && finalEntropyDelta !== 0) {
         this.body.applyEntropy(finalEntropyDelta);
-      }
+
+        // ... 前略 ...
+    this._updatePhase(this.body.phi);
+
+    // 🌟 FIX: 全滅からの輪廻（リスポーン待機）回路！
+    // もし生命が一度誕生したのに「POP 0」になったら、地球を完全に初期化して次のGenesisを待つ
+    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0) {
+      this.state.rebootCount++;
+      this._log('EXTINCTION', `生命圏が完全に沈黙。フラグを初期化し、次のGenesis(Cycle ${this.state.rebootCount})を待機。`, 'critical');
+      
+      // 誕生フラグを「未誕生(false)」にデフラグ！これで再び熱水噴出孔から生命が湧く！
+      this.biosphere.plantTriggered  = false;
+      this.biosphere.animalTriggered = false;
+      this.state.phase = 'Pre-Biotic';
     }
+  } 
 
     // 5️⃣ 惑星物理本体の更新
     this.body.update(delta);
