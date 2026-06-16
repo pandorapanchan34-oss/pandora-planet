@@ -5,7 +5,6 @@ import { ClimateSystem }   from '../environment/Climate.js';
 import { Atmosphere }      from '../environment/Atmosphere.js';
 import { Geosphere }       from '../environment/Geosphere.js';
 import { Hydrosphere }     from '../environment/Hydrosphere.js';
-// 🌟 生命起源システムを正式マウント！
 import { OriginManager }   from '../origins/OriginManager.js';
 import { Events, EVENT, HistoryManager } from './Events.js';
 
@@ -15,18 +14,17 @@ export class PandoraEngine {
     this.active = false;
     this.time   = 0;
 
+    // 各サブシステムのインスタンス化（器官の受肉）
     this.body      = new EarthBody(planetConfig);
     this.biosphere = new Biosphere();
-
-    // ── 🌟 環境の四圏システムを正式受肉 ──
+    this.climate   = new ClimateSystem(planetConfig);
+    
     this.atmosphere  = new Atmosphere(planetConfig);
     this.geosphere   = new Geosphere(planetConfig);
     this.hydrosphere = new Hydrosphere(planetConfig);
-    this.climate     = new ClimateSystem(planetConfig);
-
-    // ── 🌟 生命起源マネージャーを正式マウント ──
     this.originManager = new OriginManager(planetConfig);
 
+    // コロシアム要塞群のデータレイヤーを惑星内に受肉
     this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
 
     this.state = {
@@ -35,11 +33,13 @@ export class PandoraEngine {
     };
 
     this.eventLog   = [];
+    
+    // earth.js の定義（1_000_000）を正しくマウント。なければ1Ma
     this._yearScale = planetConfig.yearScale ?? 1_000_000;
 
     this._initGlobalListeners();
 
-    // ── 初期状態の確定同期 ──
+    // 初期状態確定の完全同期
     const bodySnap = this.body.getSnapshot();
     const bioSnap  = this.biosphere.getSnapshot();
     const atmoSnap = this.atmosphere.getSnapshot();
@@ -72,6 +72,7 @@ export class PandoraEngine {
   update(delta) {
     if (!this.active) return;
 
+    // 全てのサブシステム（物理・気候・生命）に共通の加速時間軸（delta）を流し込む
     this.time       += delta;
     this.state.year += this._yearScale * delta;
 
@@ -80,12 +81,10 @@ export class PandoraEngine {
     }
 
     const oldStrain = this.body.strain;
-    
-    let bodySnap = this.body.getSnapshot();
-    let climSnap = this.climate.getSnapshot();
-    let bioSnap  = this.biosphere.getSnapshot();
-    let atmoSnap = this.atmosphere.getSnapshot();
-    let geoSnap  = this.geosphere.getSnapshot();
+    let bodySnap    = this.body.getSnapshot();
+    let climSnap    = this.climate.getSnapshot();
+    let bioSnap     = this.biosphere.getSnapshot();
+    let atmoSnap    = this.atmosphere.getSnapshot();
 
     // 1️⃣ 環境システムの更新
     this.geosphere.update(bodySnap, delta);
@@ -93,16 +92,18 @@ export class PandoraEngine {
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
     
     atmoSnap = this.atmosphere.getSnapshot();
-    geoSnap  = this.geosphere.getSnapshot();
+    const geoSnap = this.geosphere.getSnapshot();
 
-    // 2️⃣ 🌟 生命起源プレーンの同期 ＆ 誕生イベントの検知
+    // 2️⃣ 生命起源プレーンの同期 ＆ 誕生イベントの検知
     const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
     if (originEvent) {
       this._onOriginEvent(originEvent);
     }
 
-    // 3️⃣ 環境パケットのブレンド
+    // 3️⃣ 環境パケット（生データ）のブレンド
     const climateInput = {
+      surfaceTemp: this.climate.surfaceTemp,
+      stability:   this.climate.stability,
       co2Level:     this.atmosphere.co2Level,
       oxygenLevel:  this.atmosphere.oxygenLevel,
       oceanTemp:    this.hydrosphere.oceanTemp,
@@ -118,7 +119,7 @@ export class PandoraEngine {
                             + this.geosphere.getEntropyContribution() 
                             + this.hydrosphere.getEntropyContribution();
 
-      // 🌟 熱水噴出孔群が生成する「局所負エントロピー」も合算して還流
+      // 熱水噴出孔群が生成する「局所負エントロピー」も合算して還流
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
       this.body.setPhi(this.body.phi + bioResult.writeout);
@@ -133,13 +134,14 @@ export class PandoraEngine {
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
+    // Strain解放 → 物理衝撃の伝播
     const strainRelease = oldStrain - this.body.strain;
     if (strainRelease > 0.1) {
       this.biosphere.onPhysicalShock(strainRelease);
       this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
     }
 
-    // 6️⃣ 気候システムへのフィードバック
+    // 6️⃣ 気候システムへのフィードバック同期
     this.climate.update(bodySnap, climateInput, delta);
 
     // 7️⃣ コロシアム要塞の環境同期
@@ -213,7 +215,7 @@ export class PandoraEngine {
       atmosphere: this.atmosphere.getSnapshot(),
       geosphere:  this.geosphere.getSnapshot(),
       hydrosphere: this.hydrosphere.getSnapshot(),
-      origins:     this.originManager.getSnapshot(), // UI同期用
+      origins:     this.originManager.getSnapshot(),
       species: {
         population:   bio.population,
         drive:        bio.drive,
