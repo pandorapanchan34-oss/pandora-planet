@@ -264,3 +264,23 @@ canvas#sphere {
     min-height: 0;
     z-index: 1;
 }
+/* ── 🌟 Singularity フェーズ覚醒用パッチ ── */
+
+/* 特異点到達時、パネル全体がネオンの黄緑色に発光 */
+.top-panel.singularity {
+    border-color: #aaff44;
+    box-shadow: 0 0 20px rgba(170, 255, 68, 0.3);
+}
+
+/* 覚醒したつかさ要塞のリスト表示をサイバーパンクなパルス仕様へ */
+.fortress-node-ui.singularity {
+    border: 1px solid #aaff44;
+    background: rgba(170, 255, 68, 0.1);
+}
+
+/* 文字色をサイバーネオンへ */
+.singularity .value, 
+.singularity .logo {
+    color: #aaff44;
+    text-shadow: 0 0 8px rgba(170, 255, 68, 0.8);
+}
