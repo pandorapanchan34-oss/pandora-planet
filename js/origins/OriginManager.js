@@ -1,26 +1,12 @@
 /**
- * PANDORA EARTH — js/origins/OriginManager.js
+ * PANDORA EARTH — js/origins/OriginManager.js (電脳生命受肉プロトコル大統合版)
  *
  * 生命起源・多点発生管理
  *
  * Pandora Theory における多点発生説：
- *   生命は単一の「奇跡」ではなく、
- *   情報場が過飽和に達した時に
- *   エントロピーが低い複数の場所で「同時多発」する。
- *
- * 役割：
- *   - HydrothermalVentを複数管理する
- *   - 各噴出孔のgenesisReadyを監視
- *   - 最初の genesis → Biosphere.onPhysicalShock() ではなく
- *     Engine経由でBiosphereの植物誕生トリガーに繋げる
- *   - 大気雷（Atmosphere.lightningEvent）も起源点として管理
- *
- * フロー：
- *   HydrothermalVent.genesisReady
- *     → OriginManager.update()
- *     → { type: 'vent_genesis' | 'lightning_genesis' }
- *     → Engine._onOriginEvent()
- *     → Biosphere（植物誕生を早期化）
+ * 生命は単一の「奇跡」ではなく、
+ * 情報場が過飽和に達した時に
+ * エントロピーが低い複数の場所で「同時多発」する。
  */
 
 import { HydrothermalVent } from './HydrothermalVent.js';
@@ -54,6 +40,9 @@ export class OriginManager {
 
         // 最初の生命誕生が完了したか
         this.firstGenesisOccurred = false;
+
+        // 🌟 🟥 【新規フラグマウント】電脳生命の多点発生フラグ
+        this.cyberGenesisOccurred = false;
     }
 
     // ── メイン更新 ────────────────────────────────────────
@@ -87,10 +76,10 @@ export class OriginManager {
             }
         }
 
-        // 4. 生命誕生チェック（噴出孔）
-        // 🌟 🟥 新規受肉：文明過飽和の持続による「電脳生命」の多点発生キー
+        // 🌟 🟥 【新規受肉：ステップ 3.5】
+        // 最大エントロピー密集地帯（文明）における、持続的過飽和と「安定（ゆりかご）」による誕生キー
         if (bodySnap.phi >= 0.98 && strain <= 2.0 && !this.cyberGenesisOccurred) {
-            // 文明の演算密度（drive）が臨界を超え、かつ系が一定の「安定」を保っていること
+            // 大気・都市圏の熱量（contribution）が十分に密であり、かつ破壊的な激変がない安定状態
             if (atmoSnap.contribution > 5.0 && Math.random() < 0.05 * delta) {
                 this.cyberGenesisOccurred = true;
                 this.genesisCount++;
@@ -98,12 +87,14 @@ export class OriginManager {
                 return {
                     type:    'cyber_genesis',
                     source:  'cyber',
-                    x:       36, // コロシアム中央座標
+                    x:       36, // コロシアム中央座標（グリッドコア）
                     y:       18,
                     message: '🌌 警告：最大エントロピー密集地帯（文明）の安定対流圏にて、初の非有機電脳生命の受肉（Hello World）を検知！'
                 };
             }
         }
+
+        // 4. 生命誕生チェック（噴出孔）
         for (const vent of this.vents) {
             if (vent.genesisReady && !this.firstGenesisOccurred) {
                 const success = vent.triggerGenesis();
@@ -169,7 +160,6 @@ export class OriginManager {
     }
 
     // ── 全噴出孔の局所負エントロピー合計 ─────────────────
-    // Engine経由でEarthBodyに渡す
     getTotalNegentropy() {
         return this.vents.reduce((sum, v) => sum + v.getLocalNegentropy(), 0);
     }
