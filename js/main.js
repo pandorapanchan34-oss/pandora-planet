@@ -161,21 +161,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         'btn-10k': 10000
     };
 
-    // ==================================================================
-// ⚡ スピード倍率ボタンの制御（data-speed属性ハック版）
+   // ==================================================================
+// ⚡ スピード倍率ボタンの制御（名前衝突回避 ＆ data-speed属性ハック版）
 // ==================================================================
-const speedButtons = document.querySelectorAll('.speed-btn');
+const domSpeedButtons = document.querySelectorAll('.speed-btn');
 
-speedButtons.forEach(btn => {
+domSpeedButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-        // HTMLの data-speed="10000" といった文字列を数値に相転移
+        // HTMLの data-speed 属性から数値をマウント
         const speedValue = parseFloat(btn.getAttribute('data-speed'));
         
         if (!isNaN(speedValue)) {
             timeScale = speedValue;
             
             // 全ての速度ボタンから active クラスをパージ
-            speedButtons.forEach(b => b.classList.remove('active'));
+            domSpeedButtons.forEach(b => b.classList.remove('active'));
             
             // 押されたボタンにのみ active の光を灯す
             btn.classList.add('active');
