@@ -22,7 +22,8 @@ export class Hydrosphere {
         const { surfaceTemp = 15 }        = climateSnap;
         const { co2Level = 0.4 }          = bioSnap; 
 
-        // 🌟 爆発防止スタビライザー！
+        // 1. 海洋温度更新（熱容量で緩やかに変化）
+        // 🌟 【時空加速スタビライザー】海洋温度の爆発（NaN化）を防ぐ
         const targetTemp = surfaceTemp * 0.8 + mantleTemp * 0.001;
         const lerp  = Math.min(1.0, (0.1 / OCEAN_HEAT_CAPACITY) * delta);
         this.oceanTemp  += (targetTemp - this.oceanTemp) * lerp;
