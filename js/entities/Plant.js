@@ -59,13 +59,15 @@ export class Plant extends Individual {
         this.nutrientReleased = false;
     }
 
-    // 🌟 原始地球（70℃灼熱環境）適応パッチ
+    // ── 光合成効率（bgf摩擦ベース）───────────────────────
     _calcPhotosynthesis(temp, stability) {
         const bgfFriction = Math.abs(temp - BGF) / BGF;
-        // 藻類(algae)の場合は初期の過酷な熱摩擦を無効化（1/5に軽減）する適応ゲノムを発動
         const frictionMitigation = this.plantType === 'algae' ? 0.2 : 1.0;
         const tempEff     = Math.max(0.05, 1 - bgfFriction * 2.5 * frictionMitigation);
-        return tempEff * stability * this.maturity;
+        
+        // 🌟 【絶対防壁】STABが0%になっても、光合成を完全に停止させない（生命は道を見つける）
+        const stabEff = Math.max(0.1, stability);
+        return tempEff * stabEff * this.maturity;
     }
 
     _calcStress(env) {
