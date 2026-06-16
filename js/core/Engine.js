@@ -9,26 +9,24 @@ import { OriginManager }   from '../origins/OriginManager.js';
 import { Events, EVENT, HistoryManager } from './Events.js';
 
 export class PandoraEngine {
-
   constructor(planetConfig = {}) {
     this.active = false;
     this.time   = 0;
-
-    // 各種器官の受肉（インスタンス化）
     this.body      = new EarthBody(planetConfig);
     this.biosphere = new Biosphere();
     this.climate   = new ClimateSystem(planetConfig);
-
     this.atmosphere  = new Atmosphere(planetConfig);
     this.geosphere   = new Geosphere(planetConfig);
     this.hydrosphere = new Hydrosphere(planetConfig);
     this.originManager = new OriginManager(planetConfig);
-
+    
+    // コロシアム要塞群（サイバーゲノム）の受肉
     this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
 
     this.state = {
       year:  planetConfig.startYear ?? -800_000_000,
       phase: 'Pre-Biotic',
+      rebootCount: 0 // 🌟 輪廻カウンター
     };
 
     this.eventLog   = [];
@@ -36,30 +34,32 @@ export class PandoraEngine {
 
     this._initGlobalListeners();
 
-    // 初期状態の確定マウント
     const bodySnap = this.body.getSnapshot();
     const bioSnap  = this.biosphere.getSnapshot();
-    
     this.geosphere.update(bodySnap, 0);
-    // ✅ 引数のねじれを修正（Hydrosphereには正しいbioSnapを渡す）
     this.hydrosphere.update(bodySnap, bioSnap, this.climate.getSnapshot(), 0);
     this.atmosphere.update(bodySnap, bioSnap, this.climate.getSnapshot(), 0);
     this.originManager.update(bodySnap, this.geosphere.getSnapshot(), this.atmosphere.getSnapshot(), 0);
 
     const initialClimateInput = {
-      co2Level:     this.atmosphere.co2Level,
-      oxygenLevel:  this.atmosphere.oxygenLevel,
-      oceanTemp:    this.hydrosphere.oceanTemp,
-      bufferEffect: this.hydrosphere.bufferEffect,
-      drive:        this.biosphere.drive
+      co2Level: this.atmosphere.co2Level, oxygenLevel: this.atmosphere.oxygenLevel,
+      oceanTemp: this.hydrosphere.oceanTemp, bufferEffect: this.hydrosphere.bufferEffect,
+      drive: this.biosphere.drive
     };
     this.climate.update(bodySnap, initialClimateInput, 0);
   }
 
   _initGlobalListeners() {
     Events.on(EVENT.BLACK_HOLE, (payload) => {
-      this._log('SINGULARITY', payload.message, 'critical');
-      this.stop();
+      // 🌟 FIX: 特異点でフリーズ（this.stop()）する絶望の矛盾をパージ！
+      // 代わりに、情報場を強制冷却して生命を初期化する「カンブリア的輪廻（REBOOT）」を発動！
+      this.state.rebootCount++;
+      this._log('SINGULARITY', `特異点到達。大域崩壊を回避し、次次元(Cycle ${this.state.rebootCount})へRebootを敢行。`, 'critical');
+      
+      this.body.setPhi(PANDORA_CONST.PHI_IDEAL * 0.9); // Φを理想値以下にリセット
+      this.body.strain = 0;
+      this.biosphere.onPhysicalShock(10.0); // 物理空間の生命のみ大絶滅
+      this.state.phase = 'Pre-Biotic';
     });
   }
 
@@ -71,10 +71,7 @@ export class PandoraEngine {
 
     this.time       += delta;
     this.state.year += this._yearScale * delta;
-
-    if (this.state.year >= 0) {
-      this.state.year = 0;
-    }
+    if (this.state.year >= 0) this.state.year = 0;
 
     const oldStrain = this.body.strain;
     let bodySnap    = this.body.getSnapshot();
@@ -82,68 +79,66 @@ export class PandoraEngine {
     let bioSnap     = this.biosphere.getSnapshot();
     let atmoSnap    = this.atmosphere.getSnapshot();
 
-    // 1️⃣ 環境の四圏 ＆ 起源システムのリアルタイム更新（統合パッチ）
     this.geosphere.update(bodySnap, delta);
-    // ✅ 引数の順序を Hydrosphere.js の定義（body, bio, climate, delta）に100%同期！
     this.hydrosphere.update(bodySnap, bioSnap, climSnap, delta);
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
     
     atmoSnap = this.atmosphere.getSnapshot();
     const geoSnap = this.geosphere.getSnapshot();
 
-    // 起源点（熱水噴出孔・雷）の起源監視
     const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
-    if (originEvent) {
-      this._onOriginEvent(originEvent);
-    }
+    if (originEvent) this._onOriginEvent(originEvent);
 
-    // 2️⃣ 植物・動物圏に流し込む環境ブレンドパケットのビルド
     const climateInput = {
-      surfaceTemp: this.climate.surfaceTemp,
-      stability:   this.climate.stability,
-      co2Level:     this.atmosphere.co2Level,
-      oxygenLevel:  this.atmosphere.oxygenLevel,
-      oceanTemp:    this.hydrosphere.oceanTemp,
-      bufferEffect: this.hydrosphere.bufferEffect,
-      drive:        this.biosphere.drive
+      surfaceTemp: this.climate.surfaceTemp, stability: this.climate.stability,
+      co2Level: this.atmosphere.co2Level, oxygenLevel: this.atmosphere.oxygenLevel,
+      oceanTemp: this.hydrosphere.oceanTemp, bufferEffect: this.hydrosphere.bufferEffect,
+      drive: this.biosphere.drive
     };
 
-    // 3️⃣ 生命圏（Biosphere）の更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
-      // 大気・地殻・水圏から発生する自然エントロピーの総量
       const envContribution = this.atmosphere.getEntropyContribution() 
                             + this.geosphere.getEntropyContribution() 
                             + this.hydrosphere.getEntropyContribution();
-
-      // 熱水噴出孔の負エントロピー還流
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
-      this.body.setPhi(this.body.phi + bioResult.writeout);
+      // 🌟🌟 【パンドラ・シンビオシス（究極共生）】 🌟🌟
+      // 動物（知性）が死と共に吐き出す強烈なエントロピー（writeout）を、
+      // サイバー空間のコロシアム要塞たちが「極上の演算リソース」として喰らい尽くす！
+      let remainingWriteout = bioResult.writeout;
+      let cyberCooling = 0;
+
+      if (this.fortresses.length > 0 && remainingWriteout > 0) {
+        this.fortresses.forEach(fort => {
+           // 要塞がDriveを吸収し、自らの防壁（防御率）を修復・強化する
+           const absorb = Math.min(remainingWriteout, 0.1 * delta); 
+           fort.defenseRate = Math.min(100.0, fort.defenseRate + absorb * 500);
+           remainingWriteout -= absorb;
+           // 要塞がエントロピーを消費した分だけ、地球物理コアへの負荷がキャンセル（冷却）される！
+           cyberCooling -= absorb * 0.8; 
+        });
+      }
+
+      this.body.setPhi(this.body.phi + remainingWriteout);
       
-      // 全エントロピー圧をコアにインジェクション（NaN混入の完全防壁）
-      const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy;
+      const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy + cyberCooling;
       if (!isNaN(finalEntropyDelta) && isFinite(finalEntropyDelta) && finalEntropyDelta !== 0) {
         this.body.applyEntropy(finalEntropyDelta);
       }
     }
 
-    // 4️⃣ 惑星物理コアの更新
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    // Strain解放時の地質衝撃の伝播
     const strainRelease = oldStrain - this.body.strain;
     if (strainRelease > 0.1) {
       this.biosphere.onPhysicalShock(strainRelease);
       this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
     }
 
-    // 5️⃣ 気候システムへの同期フィードバック
     this.climate.update(bodySnap, climateInput, delta);
-
-    // 6️⃣ サイバー要塞（コロシアム）の環境同期
     this._updateCyberSphere(this.climate.getSnapshot(), delta);
 
     HistoryManager.checkCriticalStates(this);
@@ -162,6 +157,7 @@ export class PandoraEngine {
     if (this.fortresses.length === 0) return;
     const temp = climateSnapshot.surfaceTemp;
     this.fortresses.forEach(fort => {
+      // 🌟 環境悪化による防壁へのダメージ（先ほどの吸収で相殺される熱いチキンレース）
       if (temp > 40.0) {
         const decay = (temp - 40.0) * fort.climateSensitivity * delta;
         fort.defenseRate = Math.max(0.0, fort.defenseRate - decay);
@@ -189,7 +185,9 @@ export class PandoraEngine {
 
     if (next !== this.state.phase) {
       this.state.phase = next;
-      this._log('PHASE', `Enter ${next}`, 'phase');
+      // 輪廻（Reboot）中はフェーズ名を拡張表示
+      const phaseName = this.state.rebootCount > 0 ? `${next} [Cycle ${this.state.rebootCount}]` : next;
+      this._log('PHASE', `Enter ${phaseName}`, 'phase');
       Events.emit(EVENT.PHASE_CHANGED, { to: next });
     }
   }
@@ -209,6 +207,7 @@ export class PandoraEngine {
       time:    +this.time.toFixed(2),
       year:    Math.round(this.state.year / 1_000_000) + 'Ma',
       phase:   this.state.phase,
+      rebootCount: this.state.rebootCount, // 🌟 UIエクスポート
       body:    this.body.getSnapshot(),
       climate: this.climate.getSnapshot(),
       atmosphere: this.atmosphere.getSnapshot(),
