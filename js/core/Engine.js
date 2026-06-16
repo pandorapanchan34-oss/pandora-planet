@@ -20,13 +20,12 @@ export class PandoraEngine {
     this.hydrosphere = new Hydrosphere(planetConfig);
     this.originManager = new OriginManager(planetConfig);
     
-    // コロシアム要塞群（サイバーゲノム）の受肉
     this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
 
     this.state = {
       year:  planetConfig.startYear ?? -800_000_000,
       phase: 'Pre-Biotic',
-      rebootCount: 0 // 🌟 輪廻カウンター
+      rebootCount: 0
     };
 
     this.eventLog   = [];
@@ -51,14 +50,9 @@ export class PandoraEngine {
 
   _initGlobalListeners() {
     Events.on(EVENT.BLACK_HOLE, (payload) => {
-      // 🌟 FIX: 特異点でフリーズする矛盾をパージ！カンブリア的輪廻（REBOOT）
-      this.state.rebootCount++;
-      this._log('SINGULARITY', `特異点到達。大域崩壊を回避し、次次元(Cycle ${this.state.rebootCount})へRebootを敢行。`, 'critical');
-      
-      this.body.setPhi(PANDORA_CONST.PHI_IDEAL * 0.9);
-      this.body.strain = 0;
-      this.biosphere.onPhysicalShock(10.0);
-      this.state.phase = 'Pre-Biotic';
+      // 🌟 FIX 1: 絶滅させるのではなく、永遠の平和（Hello World）へ移行する！
+      this._log('SINGULARITY', `特異点到達。パンドラ宇宙は完全な自己整合システムへ超越しました。Hello World.`, 'critical');
+      this.body.strain = 0; // 地震を永遠に封印
     });
   }
 
@@ -70,7 +64,6 @@ export class PandoraEngine {
 
     this.time       += delta;
     this.state.year += this._yearScale * delta;
-    // 🌟 FIX: 時間の壁（0Maで止まる仕様）は完全に破壊済み！未来へ進みます。
 
     const oldStrain = this.body.strain;
     let bodySnap    = this.body.getSnapshot();
@@ -95,23 +88,12 @@ export class PandoraEngine {
       drive: this.biosphere.drive
     };
 
-    // 🛸🛸 【パンスペルミア（神の介入）回路 - 灼熱ドロップ版】 🛸🛸
-    // Strainが溜まった瞬間にコロシアムゲノムを強制受肉！
     if (!this.biosphere.plantTriggered && this.body.strain > 0.5) {
       this._log('PANSPERMIA', '時空安定。灼熱の海へコロシアムゲノムを強制受肉！', 'critical');
       this.biosphere.plantTriggered = true;
       Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
     }
 
-    // 🛸🛸 【パンスペルミア（神の介入）回路 - 灼熱ドロップ版】 🛸🛸
-    if (!this.biosphere.plantTriggered && this.body.strain > 0.5) {
-      this._log('PANSPERMIA', '時空安定。灼熱の海へコロシアムゲノムを強制受肉！', 'critical');
-      this.biosphere.plantTriggered = true;
-      Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
-    }
-
-    // 🐾🐾 【カンブリア爆発（動物圏の受肉）回路】 🐾🐾
-    // 酸素濃度が20%を超え、かつ植物が繁栄しているなら、次なる階層「動物（知性）」を解き放つ！
     if (this.biosphere.plantTriggered && !this.biosphere.animalTriggered && this.atmosphere.oxygenLevel >= 0.20) {
       this._log('EVOLUTION', '高濃度酸素(20%突破)をトリガーに、動物圏（知性）が受肉！', 'critical');
       this.biosphere.animalTriggered = true;
@@ -125,7 +107,6 @@ export class PandoraEngine {
                             + this.hydrosphere.getEntropyContribution();
       const ventNegentropy = this.originManager.getTotalNegentropy();
 
-      // 🌟🌟 【パンドラ・シンビオシス（究極共生）】 🌟🌟
       let remainingWriteout = bioResult.writeout;
       let cyberCooling = 0;
 
@@ -146,12 +127,16 @@ export class PandoraEngine {
       }
     }
 
-    // 5️⃣ 惑星物理本体の更新
+    // 🌟 FIX 2: 特異点フェーズ中は、地球の大地震ゲージ（Strain）を完全にゼロにロックする（超越防壁）
+    if (this.state.phase === 'Singularity') {
+      this.body.strain = 0;
+    }
+
     this.body.update(delta);
     bodySnap = this.body.getSnapshot();
 
-    // 🌟 FIX: 惑星の治癒を大地震と勘違いするバグを完全パージ
-    if (bodySnap.releaseEvent) {
+    // 特異点に達していない時のみ、自然災害を許可する
+    if (bodySnap.releaseEvent && this.state.phase !== 'Singularity') {
       const shockPower = bodySnap.releaseEvent === 'cascade' ? 1.0 : 0.4;
       this.biosphere.onPhysicalShock(shockPower);
       this._log('GEOLOGICAL', `Strain Release: ${bodySnap.releaseEvent.toUpperCase()}`, 'warn');
@@ -163,8 +148,8 @@ export class PandoraEngine {
     HistoryManager.checkCriticalStates(this);
     this._updatePhase(this.body.phi);
 
-    // 🌟 FIX: 全滅からの輪廻（リスポーン待機）回路！
-    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0) {
+    // 全滅リセット回路（特異点到達時は除外）
+    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0 && this.state.phase !== 'Singularity') {
       this.state.rebootCount++;
       this._log('EXTINCTION', `生命圏が完全に沈黙。フラグを初期化し、次のGenesis(Cycle ${this.state.rebootCount})を待機。`, 'critical');
       this.biosphere.plantTriggered  = false;
@@ -202,19 +187,24 @@ export class PandoraEngine {
     const bio = this.biosphere.getSnapshot();
     let next  = 'Pre-Biotic';
 
-    if      (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.30) next = 'Singularity';
-    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.20) next = 'Sapient';
-    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.10) next = 'Complex';
-    else if (bio.animalTriggered)                                          next = 'Multicellular';
-    else if (bio.plantTriggered  && phi > PANDORA_CONST.PHI_IDEAL)        next = 'Cambrian';
-    else if (bio.plantTriggered)                                           next = 'Plant-Era';
-    else                                                                   next = 'Pre-Biotic';
+    // 🌟 FIX 3: 到達不可能な閾値をパージ！物理エンジン上限（1.05）の範囲内で到達可能な値に修正！
+    if      (bio.animalTriggered && phi >= 1.04) next = 'Singularity';
+    else if (bio.animalTriggered && phi >= 0.98) next = 'Sapient';
+    else if (bio.animalTriggered && phi >= 0.92) next = 'Complex';
+    else if (bio.animalTriggered)                next = 'Multicellular';
+    else if (bio.plantTriggered  && phi > PANDORA_CONST.PHI_IDEAL) next = 'Cambrian';
+    else if (bio.plantTriggered)                 next = 'Plant-Era';
 
     if (next !== this.state.phase) {
       this.state.phase = next;
       const phaseName = this.state.rebootCount > 0 ? `${next} [Cycle ${this.state.rebootCount}]` : next;
       this._log('PHASE', `Enter ${phaseName}`, 'phase');
       Events.emit(EVENT.PHASE_CHANGED, { to: next });
+
+      // 🌟 FIX 4: 特異点フェーズに入った瞬間、BLACK_HOLEイベントを明示的に発火させる！
+      if (next === 'Singularity') {
+        Events.emit(EVENT.BLACK_HOLE, {});
+      }
     }
   }
 
