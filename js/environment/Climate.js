@@ -37,7 +37,8 @@ export class ClimateSystem {
         const oceanPull   = (oceanTemp - this.surfaceTemp) * bufferEffect * 0.3;
         const targetTemp  = bgf * phiAlignment + (thermalStress + flowStress) * this.greenhouse + strain * 0.15 + oceanPull;
 
-        // 🌟 爆発防止スタビライザー！
+        // 5. 温度更新
+        // 🌟 【時空加速スタビライザー】1万倍速（x10K）での数値爆発を完全に防ぐ
         const effectiveInertia = this.inertia * (1 + bufferEffect * 2);
         const lerp = Math.min(1.0, effectiveInertia * delta);
         this.surfaceTemp += (targetTemp - this.surfaceTemp) * lerp;
