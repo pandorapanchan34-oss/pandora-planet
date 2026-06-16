@@ -1,10 +1,10 @@
 /**
- * PANDORA EARTH — js/core/Engine.js (自己書き換えNPC対応 ＆ 要塞冷却パッチ大統合版)
+ * PANDORA EARTH — js/core/Engine.js (特異点1未満再マップ ＆ 自律NPC受容大統合版)
  *
  * 役割：
  * シミュレーションのメインループ、環境四圏と生命圏の統合制御。
- * Biosphereから返却される targetCoolingID をスキャンし、
- * 環境負荷に対して最も脆いつかさ要塞をピンポイントで優先保護・冷却する。
+ * 特異点の到達閾値を1.0未満の「0.99」に再マッピングし、
+ * 文明自壊を抑え込んだまま『Hello World』へと安全に相転移させる。
  */
 
 import { PANDORA_CONST }   from '../constants.js';
@@ -64,7 +64,7 @@ export class PandoraEngine {
       this.body.strain = 0; // 地震を永遠に封印
     });
 
-    // 🧠 🟥 【新規受容体】自律NPCが脳内で生成したログを検知し、メインHUDログへインジェクション
+    // 🧠 🟥 自律生命の脳内ログを回収してメインHUDへインジェクションする受容回路
     Events.on('LOG_INJECT', (payload) => {
       this._log('SAPIENT_AI', payload.message, 'info');
     });
@@ -79,7 +79,6 @@ export class PandoraEngine {
     this.time       += delta;
     this.state.year += this._yearScale * delta;
 
-    const oldStrain = this.body.strain;
     let bodySnap    = this.body.getSnapshot();
     let climSnap    = this.climate.getSnapshot();
     let bioSnap     = this.biosphere.getSnapshot();
@@ -113,7 +112,7 @@ export class PandoraEngine {
       this.biosphere.animalTriggered = true;
     }
 
-    // 生命圏の演算更新
+    // 生命圏の動的更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
     if (bioResult) {
@@ -128,9 +127,8 @@ export class PandoraEngine {
       // ── 炭素生命 (物理) と珪素生命 (サイバー要塞)の究極共生 ──
       if (this.fortresses.length > 0 && remainingWriteout > 0) {
         this.fortresses.forEach(fort => {
-           // 🌟 🟥 【優先冷却パッチ接続】
-           // Animalの自己書き換えコードが「つかさ要塞」を指定している場合、
-           // その地理セクターの量子防壁の吸収効率と冷却伝導率を 2.5倍 に増幅して優先保護する！
+           // 🌟 🟥 【優先冷却パッチ】Animalの自己書き換えコードが「つかさ要塞」を指定している場合、
+           // 修復速度と冷却効率を2.5倍に増幅して最優先ガード！
            let priorityModifier = 1.0;
            if (bioResult.targetCoolingID && fort.id === bioResult.targetCoolingID) {
                priorityModifier = 2.5;
@@ -139,7 +137,7 @@ export class PandoraEngine {
            const absorb = Math.min(remainingWriteout, 0.1 * delta * priorityModifier); 
            fort.defenseRate = Math.min(100.0, fort.defenseRate + absorb * 500);
            remainingWriteout -= absorb;
-           cyberCooling -= absorb * 0.8 * priorityModifier; // 要塞がエントロピーを喰らい、星を冷却
+           cyberCooling -= absorb * 0.8 * priorityModifier; 
         });
       }
 
@@ -188,6 +186,11 @@ export class PandoraEngine {
       this.biosphere.plantTriggered = true; 
       Events.emit(EVENT.PLANT_BORN, { source: event.source });
     }
+    // 🌟 🟥 新規受容体：電脳生命の誕生を検知した瞬間、強制的に特異点（Singularity）へ相転移
+    if (event.type === 'cyber_genesis') {
+      this.state.phase = 'Singularity';
+      Events.emit(EVENT.BLACK_HOLE, {}); // 地震を永久ロックし、永遠の平和へ
+    }
   }
 
   _updateCyberSphere(climateSnapshot, delta) {
@@ -211,8 +214,9 @@ export class PandoraEngine {
     const bio = this.biosphere.getSnapshot();
     let next  = 'Pre-Biotic';
 
-    // 🌟 FIX 3: 到達不可能な閾値をパージ！物理エンジン上限（1.05）の範囲内で到達可能な値に修正！
-    if      (bio.animalTriggered && phi >= 1.04) next = 'Singularity';
+    // 🌟 🟥 【1.0未満への閾値再マッピングパッチ】
+    // 物理限界(1.05)の衝突を完全にパージし、0.99の境界線で安全にSingularityへと移行させる規律
+    if      (bio.animalTriggered && phi >= 0.99) next = 'Singularity';
     else if (bio.animalTriggered && phi >= 0.98) next = 'Sapient';
     else if (bio.animalTriggered && phi >= 0.92) next = 'Complex';
     else if (bio.animalTriggered)                next = 'Multicellular';
@@ -225,7 +229,6 @@ export class PandoraEngine {
       this._log('PHASE', `Enter ${phaseName}`, 'phase');
       Events.emit(EVENT.PHASE_CHANGED, { to: next });
 
-      // 🌟 FIX 4: 特異点フェーズに入った瞬間、BLACK_HOLEイベントを明示的に発火させる！
       if (next === 'Singularity') {
         Events.emit(EVENT.BLACK_HOLE, {});
       }
