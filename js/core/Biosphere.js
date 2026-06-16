@@ -1,199 +1,229 @@
-/**
- * PANDORA EARTH — js/core/Biosphere.js
- * 生命圏全体の状態管理（植物・動物・死体エントロピー完全統合版）
- */
+import { PANDORA_CONST }   from '../constants.js';
+import { EarthBody }       from './EarthBody.js';
+import { Biosphere }       from './Biosphere.js';
+import { ClimateSystem }   from '../environment/Climate.js';
+import { Atmosphere }      from '../environment/Atmosphere.js';
+import { Geosphere }       from '../environment/Geosphere.js';
+import { Hydrosphere }     from '../environment/Hydrosphere.js';
+// 🌟 生命起源システムを正式マウント！
+import { OriginManager }   from '../origins/OriginManager.js';
+import { Events, EVENT, HistoryManager } from './Events.js';
 
-import {
-    calcSLocal,
-    calcSCritical,
-    calcSaturation,
-    calcMarginAccumulation,
-    calcCoolingEffect,
-    isPlantTrigger,
-    isAnimalTrigger,
-} from './Entropy.js';
+export class PandoraEngine {
 
-import { Plant, selectPlantType } from '../entities/Plant.js';
-import { Animal, selectAnimalType } from '../entities/Animal.js'; // 🌟 動物インポート
+  constructor(planetConfig = {}) {
+    this.active = false;
+    this.time   = 0;
 
-const COOLING_PERIOD   = 180;
-const MAX_PLANTS       = 50;
-const MAX_ANIMALS      = 30; // 🌟 動物の上限
-const WRITEOUT_EFF     = 0.002;
+    this.body      = new EarthBody(planetConfig);
+    this.biosphere = new Biosphere();
 
-export class Biosphere {
-    constructor() {
-        this.plants = [];
-        this.animals = []; // 🌟 凍結解除！
+    // ── 🌟 環境の四圏システムを正式受肉 ──
+    this.atmosphere  = new Atmosphere(planetConfig);
+    this.geosphere   = new Geosphere(planetConfig);
+    this.hydrosphere = new Hydrosphere(planetConfig);
+    this.climate     = new ClimateSystem(planetConfig);
 
-        this.phase = 'accumulation';
-        this.coolingTimer = 0;
-        
-        this.s_local      = 0;
-        this.s_critical   = 0;
-        this.s_margin     = 0;
-        this.saturation   = 0;
-        
-        this.population   = 0;
-        this.biodiversity = 0;
-        this.drive        = 0;
+    // ── 🌟 生命起源マネージャーを正式マウント ──
+    this.originManager = new OriginManager(planetConfig);
 
-        this.plantTriggered  = false;
-        this.animalTriggered = false;
+    this.fortresses = planetConfig.fortresses ? JSON.parse(JSON.stringify(planetConfig.fortresses)) : [];
+
+    this.state = {
+      year:  planetConfig.startYear ?? -800_000_000,
+      phase: 'Pre-Biotic',
+    };
+
+    this.eventLog   = [];
+    this._yearScale = planetConfig.yearScale ?? 1_000_000;
+
+    this._initGlobalListeners();
+
+    // ── 初期状態の確定同期 ──
+    const bodySnap = this.body.getSnapshot();
+    const bioSnap  = this.biosphere.getSnapshot();
+    const atmoSnap = this.atmosphere.getSnapshot();
+    
+    this.geosphere.update(bodySnap, 0);
+    this.hydrosphere.update(bodySnap, { co2Level: this.atmosphere.co2Level }, this.climate.getSnapshot(), 0);
+    this.atmosphere.update(bodySnap, bioSnap, this.climate.getSnapshot(), 0);
+    this.originManager.update(bodySnap, this.geosphere.getSnapshot(), atmoSnap, 0);
+
+    const initialClimateInput = {
+      co2Level:     this.atmosphere.co2Level,
+      oxygenLevel:  this.atmosphere.oxygenLevel,
+      oceanTemp:    this.hydrosphere.oceanTemp,
+      bufferEffect: this.hydrosphere.bufferEffect,
+      drive:        this.biosphere.drive
+    };
+    this.climate.update(bodySnap, initialClimateInput, 0);
+  }
+
+  _initGlobalListeners() {
+    Events.on(EVENT.BLACK_HOLE, (payload) => {
+      this._log('SINGULARITY', payload.message, 'critical');
+      this.stop();
+    });
+  }
+
+  start() { this.active = true;  }
+  stop()  { this.active = false; }
+
+  update(delta) {
+    if (!this.active) return;
+
+    this.time       += delta;
+    this.state.year += this._yearScale * delta;
+
+    if (this.state.year >= 0) {
+      this.state.year = 0;
     }
 
-    update(body, climate, delta) {
-        // 1. エントロピー基本状態の計算
-        this.s_local    = calcSLocal(body.phi, body.strain);
-        this.s_critical = calcSCritical(body.strain);
-        this.saturation = calcSaturation(this.s_local, this.s_critical);
-        
-        // 🌟 動物の誕生に必要な余剰リソース（S_margin）の動的蓄積
-        const rawMargin = this.s_critical - this.s_local;
-        this.s_margin = rawMargin > 0 ? (this.s_margin + rawMargin * 0.1 * delta) : Math.max(0, this.s_margin + rawMargin * delta);
+    const oldStrain = this.body.strain;
+    
+    let bodySnap = this.body.getSnapshot();
+    let climSnap = this.climate.getSnapshot();
+    let bioSnap  = this.biosphere.getSnapshot();
+    let atmoSnap = this.atmosphere.getSnapshot();
+    let geoSnap  = this.geosphere.getSnapshot();
 
-        // 環境オブジェクトの統合マウント
-        const env = {
-            temp:        climate.surfaceTemp ?? 19.15,
-            stability:   climate.stability   ?? 1.0,
-            strain:      body.strain          ?? 0,
-            phi:         body.phi             ?? 0.82,
-            bgf:         body.bgf             ?? 19.15,
-            oxygenLevel: climate.oxygenLevel  ?? (this.plantTriggered ? 0.21 : 0.001) // 植物がいると酸素供給
-        };
+    // 1️⃣ 環境システムの更新
+    this.geosphere.update(bodySnap, delta);
+    this.hydrosphere.update(bodySnap, { co2Level: this.atmosphere.co2Level }, climSnap, delta);
+    this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
+    
+    atmoSnap = this.atmosphere.getSnapshot();
+    geoSnap  = this.geosphere.getSnapshot();
 
-        let totalEntropyDelta = 0;
-        let totalWriteout = 0;
-
-        // 2. 植物のフェーズ管理・誕生ロジック
-        if (this.phase === 'accumulation') {
-            if (isPlantTrigger(this.s_local, this.s_critical, body.strain)) {
-                if (this.plants.length === 0) {
-                    this._genesisPlant(env);
-                    this.plantTriggered = true;
-                }
-                this.phase = 'cooling';
-                this.coolingTimer = COOLING_PERIOD;
-            }
-        } else if (this.phase === 'cooling') {
-            this.coolingTimer -= delta * 60;
-            if (this.coolingTimer <= 0) {
-                this.coolingTimer = 0;
-                this.phase = 'accumulation';
-            }
-        }
-
-        // 🌟【新マウント】動物の誕生トリガーチェック
-        if (isAnimalTrigger(this.s_margin, this.plantTriggered) && !this.animalTriggered) {
-            this._genesisAnimal(env);
-            this.animalTriggered = true;
-        }
-
-        // タイムスケールに応じた動的個体補充（10K倍速対応）
-        if (this.plantTriggered && this.plants.filter(p => p.alive).length < MAX_PLANTS) {
-            if (Math.random() < 0.6 * delta * 60 || this.plants.length === 0) this._genesisPlant(env);
-        }
-        if (this.animalTriggered && this.animals.filter(a => a.alive).length < MAX_ANIMALS) {
-            if (Math.random() < 0.3 * delta * 60) this._genesisAnimal(env);
-        }
-
-        // 3. 植物個体の更新 ＆ エントロピー集約
-        this.plants.forEach(plant => {
-            const wasAlive = plant.alive;
-            plant.update(env, delta);
-
-            // 植物の負エントロピー（冷却）を集約
-            totalEntropyDelta += plant.getEntropyContribution(body.phi, body.strain) * delta;
-
-            if (wasAlive && !plant.alive) {
-                totalWriteout += plant.nutrientYield * WRITEOUT_EFF;
-            }
-        });
-
-        // 🌟【新マウント】動物個体の更新 ＆ エントロピー集約
-        let totalAnimalDrive = 0;
-        this.animals.forEach(animal => {
-            const wasAlive = animal.alive;
-            // 酸素レベルをインジェクション
-            animal._lastOxygenLevel = env.oxygenLevel;
-            animal.update(env, delta);
-
-            if (animal.alive) {
-                totalAnimalDrive += animal.drive;
-            }
-
-            // 動物の消費エントロピー（正エントロピー）を反映
-            totalEntropyDelta += animal.getEntropyContribution(body.phi, body.strain) * delta;
-
-            if (wasAlive && !animal.alive) {
-                totalWriteout += animal.driveAccum * 0.05; // 死による強烈な書き込み
-            }
-        });
-
-        // 4. リストの掃除
-        this.plants = this.plants.filter(p => p.alive || p.age < p.lifespan + 10);
-        this.animals = this.animals.filter(a => a.alive || a.age < a.lifespan + 10);
-
-        // 5. 統計の更新
-        const alivePlants = this.plants.filter(p => p.alive).length;
-        const aliveAnimals = this.animals.filter(a => a.alive).length;
-        
-        this.population = (alivePlants + aliveAnimals) / (MAX_PLANTS + MAX_ANIMALS);
-        
-        const plantTypes = new Set(this.plants.map(p => p.type));
-        const animalTypes = new Set(this.animals.map(a => a.type));
-        this.biodiversity = (plantTypes.size + animalTypes.size) / 9;
-
-        // 🌟 生命の総駆動エネルギー（Drive）をシステム全体（要塞）へマウント
-        this.drive = totalAnimalDrive + (alivePlants > 0 ? 0.005 : 0);
-
-        return {
-            entropyDelta: totalEntropyDelta, 
-            writeout:     totalWriteout  
-        };
+    // 2️⃣ 🌟 生命起源プレーンの同期 ＆ 誕生イベントの検知
+    const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
+    if (originEvent) {
+      this._onOriginEvent(originEvent);
     }
 
-    _genesisPlant(env = {}) {
-        if (this.plants.length >= MAX_PLANTS) return;
-        const plantType = selectPlantType(env);
-        this.plants.push(new Plant({ plantType }));
+    // 3️⃣ 環境パケットのブレンド
+    const climateInput = {
+      co2Level:     this.atmosphere.co2Level,
+      oxygenLevel:  this.atmosphere.oxygenLevel,
+      oceanTemp:    this.hydrosphere.oceanTemp,
+      bufferEffect: this.hydrosphere.bufferEffect,
+      drive:        this.biosphere.drive
+    };
+
+    // 4️⃣ 生命圏（Biosphere）の更新
+    const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
+
+    if (bioResult) {
+      const envContribution = this.atmosphere.getEntropyContribution() 
+                            + this.geosphere.getEntropyContribution() 
+                            + this.hydrosphere.getEntropyContribution();
+
+      // 🌟 熱水噴出孔群が生成する「局所負エントロピー」も合算して還流
+      const ventNegentropy = this.originManager.getTotalNegentropy();
+
+      this.body.setPhi(this.body.phi + bioResult.writeout);
+      
+      const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy;
+      if (finalEntropyDelta !== 0) {
+        this.body.applyEntropy(finalEntropyDelta);
+      }
     }
 
-    // 🌟 動物生成エージェント
-    _genesisAnimal(env = {}) {
-        if (this.animals.length >= MAX_ANIMALS) return;
-        const animalType = selectAnimalType(env);
-        this.animals.push(new Animal({ animalType }));
+    // 5️⃣ 惑星物理本体の更新
+    this.body.update(delta);
+    bodySnap = this.body.getSnapshot();
+
+    const strainRelease = oldStrain - this.body.strain;
+    if (strainRelease > 0.1) {
+      this.biosphere.onPhysicalShock(strainRelease);
+      this._log('GEOLOGICAL', `Shock: ${strainRelease.toFixed(2)}`, 'info');
     }
 
-    onPhysicalShock(intensity) {
-        console.warn(`[Biosphere] Received Shock: ${intensity.toFixed(2)}`);
-        this.plants.forEach(p => { if (Math.random() < intensity * 0.5) p.alive = false; });
-        this.animals.forEach(a => { if (Math.random() < intensity * 0.7) a.alive = false; });
+    // 6️⃣ 気候システムへのフィードバック
+    this.climate.update(bodySnap, climateInput, delta);
 
-        if (intensity >= 0.8) {
-            this.plantTriggered = false;
-            this.animalTriggered = false;
-            this.phase = 'accumulation';
-            this.s_margin = 0;
-        }
-    }
+    // 7️⃣ コロシアム要塞の環境同期
+    this._updateCyberSphere(this.climate.getSnapshot(), delta);
 
-    getSnapshot() {
-        return {
-            phase:          this.phase,
-            population:   +this.population.toFixed(3),
-            biodiversity: +this.biodiversity.toFixed(3),
-            plantCount:   this.plants.filter(p => p.alive).length,
-            animalCount:  this.animals.filter(a => a.alive).length, // 🌟 スナップショット追加
-            drive:        +this.drive.toFixed(4),
-            s_local:      +this.s_local.toFixed(4),
-            s_critical:   +this.s_critical.toFixed(4),
-            saturation:   +this.saturation.toFixed(3),
-            s_margin:     +this.s_margin.toFixed(3),
-            plantTriggered: this.plantTriggered,
-            animalTriggered: this.animalTriggered,
-            isExtinct:    this.population <= 0
-        };
+    HistoryManager.checkCriticalStates(this);
+    this._updatePhase(this.body.phi);
+  }
+
+  _onOriginEvent(event) {
+    this._log('GENESIS_CORE', `[${event.source.toUpperCase()}] ${event.message}`, 'warn');
+    if (event.type === 'first_genesis') {
+      this.biosphere.plantTriggered = true; 
+      Events.emit(EVENT.PLANT_BORN, { source: event.source });
     }
+  }
+
+  _updateCyberSphere(climateSnapshot, delta) {
+    if (this.fortresses.length === 0) return;
+    const temp = climateSnapshot.surfaceTemp;
+    this.fortresses.forEach(fort => {
+      if (temp > 40.0) {
+        const decay = (temp - 40.0) * fort.climateSensitivity * delta;
+        fort.defenseRate = Math.max(0.0, fort.defenseRate - decay);
+        fort.status = 'OVERHEAT_WARNING';
+      } else if (temp < 10.0) {
+        fort.defenseRate = Math.min(100.0, fort.defenseRate + (10.0 - temp) * 0.01 * delta);
+        fort.status = 'STABLE_COOL';
+      } else {
+        fort.status = 'STANDBY';
+      }
+    });
+  }
+
+  _updatePhase(phi) {
+    const bio = this.biosphere.getSnapshot();
+    let next  = 'Pre-Biotic';
+
+    if      (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.30) next = 'Singularity';
+    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.20) next = 'Sapient';
+    else if (bio.animalTriggered && phi > PANDORA_CONST.PHI_IDEAL * 1.10) next = 'Complex';
+    else if (bio.animalTriggered)                                          next = 'Multicellular';
+    else if (bio.plantTriggered  && phi > PANDORA_CONST.PHI_IDEAL)        next = 'Cambrian';
+    else if (bio.plantTriggered)                                           next = 'Plant-Era';
+    else                                                                   next = 'Pre-Biotic';
+
+    if (next !== this.state.phase) {
+      this.state.phase = next;
+      this._log('PHASE', `Enter ${next}`, 'phase');
+      Events.emit(EVENT.PHASE_CHANGED, { to: next });
+    }
+  }
+
+  _log(type, message, level = 'info') {
+    this.eventLog.push({
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      type, message, level,
+    });
+    if (this.eventLog.length > 100) this.eventLog.shift();
+  }
+
+  getFullStatus() {
+    const bio = this.biosphere.getSnapshot();
+    return {
+      time:    +this.time.toFixed(2),
+      year:    Math.round(this.state.year / 1_000_000) + 'Ma',
+      phase:   this.state.phase,
+      body:    this.body.getSnapshot(),
+      climate: this.climate.getSnapshot(),
+      atmosphere: this.atmosphere.getSnapshot(),
+      geosphere:  this.geosphere.getSnapshot(),
+      hydrosphere: this.hydrosphere.getSnapshot(),
+      origins:     this.originManager.getSnapshot(), // UI同期用
+      species: {
+        population:   bio.population,
+        drive:        bio.drive,
+        biodiversity: bio.biodiversity,
+        isExtinct:    bio.isExtinct,
+      },
+      biosphere: bio,
+      fortresses: this.fortresses,
+      active:  this.active,
+      log:     [...this.eventLog].reverse(),
+    };
+  }
 }
