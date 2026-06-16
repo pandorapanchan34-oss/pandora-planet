@@ -46,16 +46,16 @@ export class Biosphere {
     }
 
     /**
-     * メメインアップデート
+     * メインアップデート
      * @returns {Object} Engineに渡す計算結果
      */
     update(body, climate, delta) {
-        // 1. エントロピー基本状態の計算（Entropy.jsを使用）
+        // 1. エントロピー基本状態の計算
         this.s_local    = calcSLocal(body.phi, body.strain);
         this.s_critical = calcSCritical(body.strain);
         this.saturation = calcSaturation(this.s_local, this.s_critical);
 
-        // ✅ FIX①: env オブジェクトの定義を最上部へマウント（ReferenceErrorの完全排除）
+        // 環境オブジェクトの定義
         const env = {
             temp:      climate.surfaceTemp ?? 19.15,
             stability: climate.stability   ?? 1.0,
@@ -67,21 +67,19 @@ export class Biosphere {
         let totalCooling  = 0;
         let totalWriteout = 0;
 
-        // 🟢 Biosphere.js の 46行目付近、フェーズ管理ロジックを以下にリファクタリング（上書き）
-if (this.phase === 'accumulation') {
-    // 誕生条件を満たしており、かつ植物がまだ絶滅している（または未誕生）なら受肉！
-    if (isPlantTrigger(this.s_local, this.s_critical, body.strain)) {
-        if (this.plants.length === 0) {
-            this._genesisPlant(env);
-            this.plantTriggered = true;
-            this._log?.('EVOLUTION', '最初の植物ゲノムが地表に受肉しました。', 'warn'); // ログ用
-        }
-        this.phase = 'cooling';
-        this.coolingTimer = COOLING_PERIOD;
-    }
-}
+        // 2. フェーズ管理 ＆ 生命再点火ロジック（構文エラー修正版）
+        if (this.phase === 'accumulation') {
+            // 誕生条件を満たしているかチェック
+            if (isPlantTrigger(this.s_local, this.s_critical, body.strain)) {
+                // 植物がまだ1基も存在しない（または全滅している）なら受肉
+                if (this.plants.length === 0) {
+                    this._genesisPlant(env);
+                    this.plantTriggered = true;
+                }
+                this.phase = 'cooling';
+                this.coolingTimer = COOLING_PERIOD;
+            }
         } else if (this.phase === 'cooling') {
-            // ✅ FIX②: 1万倍速の巨大な delta が入ってきても、タイマーがマイナスに吹き飛んで無限ループ化するのを防ぐ
             this.coolingTimer -= delta * 60; // 60fps想定
             if (this.coolingTimer <= 0) {
                 this.coolingTimer = 0;
@@ -89,10 +87,8 @@ if (this.phase === 'accumulation') {
             }
         }
 
-        // 🌟 コロシアム・ゲノム相転移：生命がすでに誕生している場合、環境に合わせた動的な生命維持を計算
-        // （もしMAX値未満なら、加速されたdeltaに応じて一定確率で自動追加増殖させる規律を追加）
+        // 生命が誕生している場合、加速されたdeltaに応じて一定確率で自動追加増殖（10K倍速対応）
         if (this.plantTriggered && this.plants.filter(p => p.alive).length < MAX_PLANTS) {
-            // 加速されたdeltaに比例した確率で、1万倍速の世界でも秒速で個体を自動補充
             if (Math.random() < 0.5 * delta * 60 || this.plants.length === 0) {
                 this._genesisPlant(env);
             }
@@ -108,7 +104,7 @@ if (this.phase === 'accumulation') {
                 totalCooling += calcCoolingEffect(
                     this.s_local,
                     COOLING_PERIOD > 0 ? (this.coolingTimer / COOLING_PERIOD) : 0
-                ) * delta; // タイムスケール同期
+                ) * delta;
             }
 
             // 死による情報の還流（死亡した瞬間のみ）
@@ -125,7 +121,7 @@ if (this.phase === 'accumulation') {
         this.population = aliveCount / MAX_PLANTS;
         this.biodiversity = new Set(this.plants.map(p => p.type)).size / 5;
 
-        // 植物の総駆動エネルギーを要塞ドライブへ同期させるための因果導線
+        // 生生存ドライブ（drive）の同期
         this.drive = aliveCount > 0 ? (this.biodiversity * 0.1) : 0;
 
         return {
@@ -144,7 +140,7 @@ if (this.phase === 'accumulation') {
     }
 
     /**
-     * 物理的衝撃（Engineから呼ばれる）
+     * 物理的衝撃
      */
     onPhysicalShock(intensity) {
         console.warn(`[Biosphere] Received Shock: ${intensity.toFixed(2)}`);
