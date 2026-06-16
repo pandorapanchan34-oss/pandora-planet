@@ -91,7 +91,8 @@ export function calcSaturation(s_local, s_critical) {
  * @returns {boolean}
  */
 export function isPlantTrigger(s_local, s_critical, strain) {
-    return strain >= STRAIN_PLANT_THRESHOLD && s_local > s_critical;
+    // Strainが 5.0〜8.5 の「ゆりかご圏内」にあり、かつエントロピー場が活動状態にあること
+    return strain >= STRAIN_PLANT_THRESHOLD && strain <= 8.5 && s_local > 0;
 }
 
 /**
