@@ -126,7 +126,10 @@ export class EarthBody {
         const bgfTemp  = PANDORA_DERIVED.BGF;
         const heatGain = this.netEntropy * 12.0;
         const heatLoss = (this.mantleTemp - bgfTemp) * 0.002;
-        this.mantleTemp += (heatGain - heatLoss) * delta;
+        
+        // ✅ FIX: 温度の急激なステップ大爆発を防ぐスタビライザー
+        const tempLerp = Math.min(1.0, 0.2 * delta);
+        this.mantleTemp += (heatGain - heatLoss) * tempLerp;
         this.mantleTemp  = Math.max(-50, Math.min(2000, this.mantleTemp));
 
         // 6. 放電不足検出
