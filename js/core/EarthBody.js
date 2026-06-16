@@ -100,15 +100,17 @@ export class EarthBody {
 
         this.phiGap = Math.abs(this.phi - PHI_IDEAL);
 
-        if (this.phi <= PHI_IDEAL) {
+       if (this.phi <= PHI_IDEAL) {
             // 安定領域：歪みは徐々に解消
             this.strain = Math.max(0, this.strain - 0.01 * delta);
         } else {
             // 過飽和領域：指数的跳ね上がり
             const overflow     = (this.phi - PHI_IDEAL) / (PHI_MAX - PHI_IDEAL);
             const targetStrain = Math.pow(overflow, 2) * 10.0 * depthFactor;
-            // 慣性（急激な変化に追従、衝撃表現）
-            this.strain += (targetStrain - this.strain) * 0.1 * delta;
+            
+            // ✅ FIX: 1万倍速時に係数が 1.0 を超えて数値爆発（Infinity/NaN化）するのを完全に防壁ガード
+            const lerpFactor = Math.min(1.0, 0.1 * delta);
+            this.strain += (targetStrain - this.strain) * lerpFactor;
         }
         this.strain = Math.max(0, Math.min(10.0, this.strain));
 
