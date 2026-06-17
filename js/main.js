@@ -22,15 +22,16 @@ function setEl(id, value) {
 }
 
 function updateUI(status) {
-    setEl('year',      status.year);
-    setEl('phase',     status.phase);
-    setEl('phi',       status.body.phi.toFixed(4));
-    setEl('strain',    status.body.strain.toFixed(2));
+    // status.year の代わりに、進み続ける世代カウントを注入
+    setEl('year', "STEP " + (status.generation || 0));
+    setEl('phase', status.phase);
+    setEl('phi', status.body.phi.toFixed(4));
+    setEl('strain', status.body.strain.toFixed(2));
     setEl('temp',      status.climate.surfaceTemp.toFixed(1) + '°C');
     setEl('stability', (status.climate.stability * 100).toFixed(0) + '%');
     setEl('pop',       (status.species.population * 100).toFixed(1) + '%');
     setEl('drive',     status.species.drive.toFixed(4));
-
+}
     updateFortressUI(status.fortresses);
 
     const alertBox = document.getElementById('alert-box');
