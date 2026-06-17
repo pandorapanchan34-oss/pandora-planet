@@ -73,17 +73,21 @@ export class PandoraEngine {
   start() { this.active = true;  }
   stop()  { this.active = false; }
 
+  // js/core/Engine.js の update(delta) を修正
+
   update(delta) {
     if (!this.active) return;
 
-    this.time       += delta;
-    this.state.year += this._yearScale * delta;
+    // 🌟 修正1：時間軸を「Ma」から純粋な「Generation（世代）」へ変更
+    this.time += delta;
+    this.state.generation = (this.state.generation || 0) + 1; // 1ステップ＝1世代
 
     let bodySnap    = this.body.getSnapshot();
     let climSnap    = this.climate.getSnapshot();
     let bioSnap     = this.biosphere.getSnapshot();
     let atmoSnap    = this.atmosphere.getSnapshot();
 
+    // サブシステムの更新
     this.geosphere.update(bodySnap, delta);
     this.hydrosphere.update(bodySnap, bioSnap, climSnap, delta);
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
@@ -91,27 +95,33 @@ export class PandoraEngine {
     atmoSnap = this.atmosphere.getSnapshot();
     const geoSnap = this.geosphere.getSnapshot();
 
-    const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
-    if (originEvent) this._onOriginEvent(originEvent);
+    // 🌟 修正2：マスターの電気パルス＆突然変異マネージャーを回す
+    const originEvents = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
+    if (originEvents && originEvents.length > 0) {
+      originEvents.forEach(evt => this._onOriginEvent(evt));
+    }
 
+    // 環境入力（温室効果爆発を無効化し、常に恒常性[STAB]を維持）
     const climateInput = {
-      surfaceTemp: this.climate.surfaceTemp, stability: this.climate.stability,
-      co2Level: this.atmosphere.co2Level, oxygenLevel: this.atmosphere.oxygenLevel,
-      oceanTemp: this.hydrosphere.oceanTemp, bufferEffect: this.hydrosphere.bufferEffect,
+      surfaceTemp: 22.0, // 🌟 常に生命に適した中央値 22℃ 付近に固定
+      stability: 1.0,    // 🌟 安定度100%からスタート
+      co2Level: 0.04,
+      oxygenLevel: 0.21,
       drive: this.biosphere.drive
     };
 
-    if (!this.biosphere.plantTriggered && this.body.strain > 0.5) {
-      this._log('PANSPERMIA', '時空安定。灼熱の海へコロシアムゲノムを強制受肉！', 'critical');
-      this.biosphere.plantTriggered = true;
-      Events.emit(EVENT.PLANT_BORN, { source: 'panspermia' });
+    // 生命圏の動的更新
+    this.biosphere.update(bodySnap, climateInput, delta);
+
+    // 🌟 修正3：全滅リセット回路を「種の絶滅」ではなく「情報の再創発（突然変異）」へ変更
+    if (this.biosphere.getSnapshot().population === 0 && this.state.phase !== 'Singularity') {
+      this._log('STOCHASTIC', `生命反応が一時的にゼロ。残存情報場（Φ）から新たな変異種が再受肉します。`, 'warn');
+      this.body.setPhi(this.body.phi * 0.9); // Φをわずかにゆらして次世代へ
     }
 
-    if (this.biosphere.plantTriggered && !this.biosphere.animalTriggered && this.atmosphere.oxygenLevel >= 0.20) {
-      this._log('EVOLUTION', '高濃度酸素(20%突破)をトリガーに、動物圏（知性）が受肉！', 'critical');
-      this.biosphere.animalTriggered = true;
-    }
-
+    this.body.update(delta);
+    this._updatePhase(this.body.phi);
+  }
     // 生命圏の動的更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
