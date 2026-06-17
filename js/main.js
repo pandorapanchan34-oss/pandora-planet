@@ -43,7 +43,6 @@ function updateUI(status) {
             alertBox.classList.remove('active');
         }
     }
-}
 
 function updateFortressUI(fortresses) {
     const container = document.getElementById('fortress-list');
