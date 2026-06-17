@@ -1,177 +1,74 @@
 /**
- * PANDORA EARTH — js/origins/OriginManager.js (電脳生命受肉プロトコル大統合版)
- *
- * 生命起源・多点発生管理
- *
- * Pandora Theory における多点発生説：
- * 生命は単一の「奇跡」ではなく、
- * 情報場が過飽和に達した時に
- * エントロピーが低い複数の場所で「同時多発」する。
+ * PANDORA EARTH — js/origins/OriginManager.js
+ * 【電気パルス駆動・陸海多点発生・情報過飽和突然変異モジュール】
  */
 
 import { HydrothermalVent } from './HydrothermalVent.js';
-
-// 初期噴出孔の数
-const INITIAL_VENTS     = 3;
-// 新規噴出孔が生まれる確率（Strainが高いほど増加）
-const VENT_SPAWN_BASE   = 0.0002;
-// 噴出孔の最大数
-const MAX_VENTS         = 12;
+import { MathRandom }         from '../core/Entropy.js'; // 確率ゆらぎ
 
 export class OriginManager {
-
     constructor(config = {}) {
-        // 熱水噴出孔群
         this.vents = [];
-        for (let i = 0; i < INITIAL_VENTS; i++) {
-            this.vents.push(new HydrothermalVent({
-                x: Math.floor(Math.random() * 72), // グリッド座標（将来用）
-                y: Math.floor(Math.random() * 36),
-                depth: 1500 + Math.random() * 2000,
-            }));
-        }
-
-        // 起源イベント履歴
-        this.originEvents  = [];
-        this.genesisCount  = 0; // 生命誕生回数（多点発生カウント）
-
-        // 大気雷による起源（Atmosphereと連携）
-        this.lightningGenesisReady = false;
-
-        // 最初の生命誕生が完了したか
-        this.firstGenesisOccurred = false;
-
-        // 🌟 🟥 【新規フラグマウント】電脳生命の多点発生フラグ
-        this.cyberGenesisOccurred = false;
+        this.genesisCount = 0;
+        this.originEvents = [];
+        
+        // 陸・海、それぞれの情報受容体（座標系としての初期化）
+        this.sectors = [
+            { id: 'deep_sea',   name: '深海熱水圏',   type: 'ocean', bioDensity: 0 },
+            { id: 'tidal_zone', name: '潮間帯（海）', type: 'ocean', bioDensity: 0 },
+            { id: 'land_crust', name: '原始陸上地殻', type: 'land',  bioDensity: 0 }
+        ];
     }
 
-    // ── メイン更新 ────────────────────────────────────────
     /**
-     * @param {object} bodySnap  - EarthBody.getSnapshot()
-     * @param {object} geoSnap   - Geosphere.getSnapshot()
-     * @param {object} atmoSnap  - Atmosphere.getSnapshot()
-     * @param {number} delta
-     * @returns {object|null}    - 起源イベント or null
+     * 生命起源・進化の毎フレーム更新
      */
-    update(bodySnap, geoSnap, atmoSnap, delta) {
-        const { strain } = bodySnap;
+    update(bodySnap, geoSnap, atmosphereSnap, delta) {
+        this.originEvents = [];
+        const { phi, strain } = bodySnap;
+        
+        // 大気圏から「電気パルス（雷イベント）」を検知
+        const hasElectricPulse = atmosphereSnap.lightningEvent || (Math.random() < 0.05 * strain);
 
-        // 1. 既存噴出孔を更新
-        for (const vent of this.vents) {
-            vent.update(bodySnap, geoSnap, delta);
-        }
-
-        // 2. 死んだ噴出孔を除去
-        this.vents = this.vents.filter(v => v.alive);
-
-        // 3. 新規噴出孔の自然発生（Strainが高いほど確率UP）
-        if (this.vents.length < MAX_VENTS) {
-            const spawnProb = VENT_SPAWN_BASE * (strain / 5.0) * delta;
-            if (Math.random() < spawnProb) {
-                this.vents.push(new HydrothermalVent({
-                    x: Math.floor(Math.random() * 72),
-                    y: Math.floor(Math.random() * 36),
-                    depth: 1000 + Math.random() * 3000,
-                }));
-            }
-        }
-
-        // 🌟 🟥 【新規受肉：ステップ 3.5】
-        // 最大エントロピー密集地帯（文明）における、持続的過飽和と「安定（ゆりかご）」による誕生キー
-        if (bodySnap.phi >= 0.98 && strain <= 2.0 && !this.cyberGenesisOccurred) {
-            // 大気・都市圏の熱量（contribution）が十分に密であり、かつ破壊的な激変がない安定状態
-            if (atmoSnap.contribution > 5.0 && Math.random() < 0.05 * delta) {
-                this.cyberGenesisOccurred = true;
-                this.genesisCount++;
+        // ── 1. 電気パルスによる【陸・海 同時誕生】アルゴリズム ──
+        if (hasElectricPulse) {
+            this.sectors.forEach(sector => {
+                // 情報場が一定の閾値を超えている、または電気ショックによる強制書き込み
+                const entropySaturation = phi * (1 + strain / 24.0);
                 
-                return {
-                    type:    'cyber_genesis',
-                    source:  'cyber',
-                    x:       36, // コロシアム中央座標（グリッドコア）
-                    y:       18,
-                    message: '🌌 警告：最大エントロピー密集地帯（文明）の安定対流圏にて、初の非有機電脳生命の受肉（Hello World）を検知！'
-                };
-            }
-        }
-
-        // 4. 生命誕生チェック（噴出孔）
-        for (const vent of this.vents) {
-            if (vent.genesisReady && !this.firstGenesisOccurred) {
-                const success = vent.triggerGenesis();
-                if (success) {
-                    return this._onGenesis('vent', vent);
+                if (entropySaturation > 0.75 && sector.bioDensity === 0) {
+                    sector.bioDensity = 0.1; // 命の種火が点る
+                    this.genesisCount++;
+                    
+                    this.originEvents.push({
+                        type: 'electric_genesis',
+                        source: sector.type,
+                        message: `⚡電気パルス結合：${sector.name}にて最初の情報構造（生命）が受肉。`
+                    });
                 }
+            });
+        }
+
+        // ── 2. 情報過飽和による【突然変異（Mutation）】の誘発 ──
+        // Φが理想値(0.8333)を超えて過飽和（0.92超）を起こした時、コピーエラーではなく「情報の次元崩壊」として突然変異が爆発する
+        if (phi > 0.92) {
+            const mutationRisk = (phi - 0.92) * strain * delta;
+            if (Math.random() < mutationRisk * 0.1) {
+                this.originEvents.push({
+                    type: 'hyper_mutation',
+                    message: `⚠️情報過飽和（Φ=${phi.toFixed(4)}）：情報場が溢れ、生命が不連続な「突然変異」を開始。`
+                });
             }
         }
 
-        // 5. 大気雷による生命誕生チェック
-        if (atmoSnap.lightningEvent && !this.firstGenesisOccurred) {
-            this.lightningGenesisReady = true;
-            return this._onGenesis('lightning', null);
-        }
-
-        // 6. 多点発生チェック（最初の誕生後も続く）
-        if (this.firstGenesisOccurred) {
-            const readyVents = this.vents.filter(v =>
-                v.genesisReady && !v.genesisOccurred
-            );
-            if (readyVents.length > 0) {
-                const vent = readyVents[0];
-                vent.triggerGenesis();
-                this.genesisCount++;
-                return this._onMultiGenesis(vent);
-            }
-        }
-
-        return null;
-    }
-
-    // ── 最初の生命誕生 ────────────────────────────────────
-    _onGenesis(source, vent) {
-        this.firstGenesisOccurred = true;
-        this.genesisCount++;
-
-        const event = {
-            type:    'first_genesis',
-            source,  // 'vent' | 'lightning'
-            x:       vent?.x ?? -1,
-            y:       vent?.y ?? -1,
-            message: source === 'vent'
-                ? `熱水噴出孔(${vent.x},${vent.y})で最初の生命誕生`
-                : '大気雷放電により最初の生命誕生',
-        };
-
-        this.originEvents.push(event);
-        return event;
-    }
-
-    // ── 多点発生（2回目以降）────────────────────────────────
-    _onMultiGenesis(vent) {
-        const event = {
-            type:    'multi_genesis',
-            source:  'vent',
-            x:       vent.x,
-            y:       vent.y,
-            message: `多点発生 #${this.genesisCount} — (${vent.x},${vent.y})`,
-        };
-        this.originEvents.push(event);
-        if (this.originEvents.length > 50) this.originEvents.shift();
-        return event;
-    }
-
-    // ── 全噴出孔の局所負エントロピー合計 ─────────────────
-    getTotalNegentropy() {
-        return this.vents.reduce((sum, v) => sum + v.getLocalNegentropy(), 0);
+        return this.originEvents;
     }
 
     getSnapshot() {
         return {
-            ventCount:            this.vents.length,
-            activeVents:          this.vents.filter(v => v.active).length,
-            genesisCount:         this.genesisCount,
-            firstGenesisOccurred: this.firstGenesisOccurred,
-            vents:                this.vents.map(v => v.getSnapshot()),
-            recentEvents:         [...this.originEvents].slice(-3),
+            genesisCount: this.genesisCount,
+            activeSectors: this.sectors.filter(s => s.bioDensity > 0).length,
+            latestEvents: this.originEvents
         };
     }
 }
