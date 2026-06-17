@@ -34,13 +34,17 @@ function updateUI(status) {
 }
     updateFortressUI(status.fortresses);
 
+    // 📑 main.js 内の updateUI(status) のアラートボックス部分を修正
+
     const alertBox = document.getElementById('alert-box');
     if (alertBox) {
-        if (status.body.isDischargeBlocked) {
+        // 🌟 修正：?. (オプショナルチェーン) を使い、プロパティが存在しない場合は安全に false 判定にする
+        if (status.body?.isDischargeBlocked) {
             alertBox.classList.add('active');
             alertBox.textContent = "CRITICAL: DISCHARGE BLOCKED";
         } else {
             alertBox.classList.remove('active');
+            alertBox.textContent = ''; // テキストをクリア
         }
     }
 
