@@ -78,16 +78,18 @@ export class PandoraEngine {
   update(delta) {
     if (!this.active) return;
 
-    // 🌟 修正1：時間軸を「Ma」から純粋な「Generation（世代）」へ変更
+    // 🌟 時間軸を「Ma」から純粋な「Generation（世代ステップ）」へ再定義
     this.time += delta;
-    this.state.generation = (this.state.generation || 0) + 1; // 1ステップ＝1世代
+    if (!this.state.generation) this.state.generation = 0;
+    this.state.generation++;
+    this.state.year = this.state.generation; // UI同期用にyearへステップ数をマウント
 
     let bodySnap    = this.body.getSnapshot();
     let climSnap    = this.climate.getSnapshot();
     let bioSnap     = this.biosphere.getSnapshot();
     let atmoSnap    = this.atmosphere.getSnapshot();
 
-    // サブシステムの更新
+    // 各四圏の更新（内部演算は走らせつつ、気候は恒常化させる）
     this.geosphere.update(bodySnap, delta);
     this.hydrosphere.update(bodySnap, bioSnap, climSnap, delta);
     this.atmosphere.update(bodySnap, bioSnap, climSnap, delta);
@@ -95,32 +97,75 @@ export class PandoraEngine {
     atmoSnap = this.atmosphere.getSnapshot();
     const geoSnap = this.geosphere.getSnapshot();
 
-    // 🌟 修正2：マスターの電気パルス＆突然変異マネージャーを回す
-    const originEvents = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
-    if (originEvents && originEvents.length > 0) {
-      originEvents.forEach(evt => this._onOriginEvent(evt));
-    }
+    // ⚡ マスターの定義：電気パルスおよび過飽和突然変異の追跡
+    const originEvent = this.originManager.update(bodySnap, geoSnap, atmoSnap, delta);
+    if (originEvent) this._onOriginEvent(originEvent);
 
-    // 環境入力（温室効果爆発を無効化し、常に恒常性[STAB]を維持）
+    // 🌟 安定惑星仕様：温室効果による温度爆発をパージし、常に生命に最適な環境を維持
     const climateInput = {
-      surfaceTemp: 22.0, // 🌟 常に生命に適した中央値 22℃ 付近に固定
-      stability: 1.0,    // 🌟 安定度100%からスタート
+      surfaceTemp: 22.0, // 常に22℃付近の「生命のゆりかご」に固定
+      stability: 1.0,    // 恒常性 100%
       co2Level: 0.04,
       oxygenLevel: 0.21,
       drive: this.biosphere.drive
     };
 
-    // 生命圏の動的更新
-    this.biosphere.update(bodySnap, climateInput, delta);
+    // 🌟 生命圏の動的更新（SyntaxError を防ぐため、前後の構文を完全に独立化）
+    const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
 
-    // 🌟 修正3：全滅リセット回路を「種の絶滅」ではなく「情報の再創発（突然変異）」へ変更
-    if (this.biosphere.getSnapshot().population === 0 && this.state.phase !== 'Singularity') {
-      this._log('STOCHASTIC', `生命反応が一時的にゼロ。残存情報場（Φ）から新たな変異種が再受肉します。`, 'warn');
-      this.body.setPhi(this.body.phi * 0.9); // Φをわずかにゆらして次世代へ
+    if (bioResult) {
+      const envContribution = this.atmosphere.getEntropyContribution() 
+                            + this.geosphere.getEntropyContribution() 
+                            + this.hydrosphere.getEntropyContribution();
+      const ventNegentropy = this.originManager.getTotalNegentropy();
+
+      let remainingWriteout = bioResult.writeout;
+      let cyberCooling = 0;
+
+      // つかさ要塞等のサイバー共生ロジック（既存システムとの互換維持）
+      if (this.fortresses.length > 0 && remainingWriteout > 0) {
+        this.fortresses.forEach(fort => {
+          let priorityModifier = 1.0;
+          if (bioResult.targetCoolingID && fort.id === bioResult.targetCoolingID) {
+            priorityModifier = 2.5;
+          }
+          const absorb = Math.min(remainingWriteout, 0.1 * delta * priorityModifier); 
+          fort.defenseRate = Math.min(100.0, fort.defenseRate + absorb * 500);
+          remainingWriteout -= absorb;
+          cyberCooling -= absorb * 0.8 * priorityModifier; 
+        });
+      }
+
+      this.body.setPhi(this.body.phi + remainingWriteout);
+      
+      const finalEntropyDelta = bioResult.entropyDelta + envContribution + ventNegentropy + cyberCooling;
+      if (!isNaN(finalEntropyDelta) && isFinite(finalEntropyDelta) && finalEntropyDelta !== 0) {
+        this.body.applyEntropy(finalEntropyDelta);
+      }
+    }
+
+    // 特異点シールド
+    if (this.state.phase === 'Singularity') {
+      this.body.strain = 0;
     }
 
     this.body.update(delta);
+
+    // 災害の確率制御
+    if (bodySnap.releaseEvent && this.state.phase !== 'Singularity') {
+      const shockPower = bodySnap.releaseEvent === 'cascade' ? 1.0 : 0.4;
+      this.biosphere.onPhysicalShock(shockPower);
+    }
+
+    this.climate.update(bodySnap, climateInput, delta);
+    this._updateCyberSphere(this.climate.getSnapshot(), delta);
     this._updatePhase(this.body.phi);
+
+    // 🌟 修正：全滅時は時間リセットではなく、情報場を引き継いで新たな「確率的変異」を待つ
+    if (this.biosphere.plantTriggered && this.biosphere.getSnapshot().population === 0 && this.state.phase !== 'Singularity') {
+      this._log('MUTATION_LOOP', `生命反応が一時的にゼロ。情報場（Φ）のゆらぎから新たな変異種を再創発します。`, 'warn');
+      this.body.setPhi(Math.max(0.1, this.body.phi * 0.95)); // わずかに減衰させてデッドロック回避
+    }
   }
     // 生命圏の動的更新
     const bioResult = this.biosphere.update(bodySnap, climateInput, delta);
